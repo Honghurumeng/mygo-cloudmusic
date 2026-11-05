@@ -653,9 +653,6 @@ func (a *app) queuePane(c *ui.Context) {
 		case row.Hovered():
 			row.Background(white.Alpha(0.08))
 		}
-		if !a.canPlay(tr) {
-			row.Opacity(0.4)
-		}
 		row.Children(func() {
 			a.cover(c, tr.Album.PicURL, 96, 42, 7)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
@@ -664,7 +661,7 @@ func (a *app) queuePane(c *ui.Context) {
 			})
 			ui.Text(c, clock(tr.Length())).FontSize(12).FontFeatures("tnum").TextColor(white.Alpha(0.4))
 		})
-		if row.Clicked() && a.canPlay(tr) && !playing {
+		if row.Clicked() && !playing {
 			pl.Jump(i)
 		}
 	}).Grow(1).Padding(8, 0, 40, 0).Gap(2)

@@ -43,7 +43,7 @@ func (a *app) openSettings() {
 func (a *app) changed() {
 	a.settings.save()
 	a.settings.applyAppearance()
-	a.chksz = chkszKey(a.settings)
+	a.chksz = newChKSz(a.settings)
 	if a.notch != nil {
 		a.notch.setEnabled(a.settings.Notch)
 	}
@@ -124,7 +124,7 @@ func (a *app) settingsView(c *ui.Context) {
 		}
 
 		group("播放", func() {
-			row("音质", "无损与 Hi-Res 需要黑胶 VIP，没有时播放所能播放的最高音质；用 ChKSz 音源时不受此限，下一首歌曲开始生效", func() {
+			row("音质", "无损与 Hi-Res 需要黑胶 VIP，没有时播放所能播放的最高音质；下一首歌曲开始生效", func() {
 				labels := make([]string, len(qualityLevels))
 				chosen := qualityLevels[2].label
 				for i, q := range qualityLevels {
@@ -156,18 +156,18 @@ func (a *app) settingsView(c *ui.Context) {
 		})
 
 		group("音源", func() {
-			row("ChKSz 音源", "不登录也能播放：播放地址由 ChKSz 解析，登录后仍先用网易云", func() {
+			row("ChKSz 音源", "网易云播放不了时，再由 ChKSz 解析播放地址：它按次数限额，只有真的播不了才会用到", func() {
 				on := !s.NetEaseOnly
 				if ui.Switch(c.Key("chksz"), &on).Label("使用 ChKSz 音源").Changed() {
 					s.NetEaseOnly = !on
 					a.changed()
 				}
 			})
-			row("API Key", a.chkszKeyDesc(*s), func() {
+			row("API Key", a.chkszKeyDesc(s), func() {
 				in := ui.TextInput(c.Key("chksz-key"), &s.ChKSzKey).Label("ChKSz API Key").
 					Placeholder("chksz_…").Width(210).Disabled(s.NetEaseOnly)
 				if in.Changed() {
-					a.chksz = chkszKey(a.settings)
+					a.chksz = newChKSz(a.settings)
 					a.settings.save()
 				}
 			})

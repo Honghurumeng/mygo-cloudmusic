@@ -282,13 +282,13 @@ func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 					if a.pl.Shuffle() {
 						a.pl.ToggleShuffle()
 					}
-					a.pl.PlayQueue(pl.Tracks, a.firstPlayable(pl.Tracks))
+					a.pl.PlayQueue(pl.Tracks, 0)
 				}
 				if pillButton(c.Key("shuffle"), iconShuffle, "随机播放", p.hover.Over(p.bg), p.text).Clicked() {
 					if !a.pl.Shuffle() {
 						a.pl.ToggleShuffle()
 					}
-					a.pl.PlayQueue(pl.Tracks, a.firstPlayable(pl.Tracks))
+					a.pl.PlayQueue(pl.Tracks, 0)
 				}
 				if a.savable(pl) {
 					icon, label := iconPlus, "收藏"
@@ -378,15 +378,12 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 			bg = p.hover
 		}
 		row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 100 * time.Millisecond}))
-		if !a.canPlay(tr) {
-			row.Opacity(0.42)
-		}
 		row.Children(func() {
 			ui.Box(c).Width(26).Center().Children(func() {
 				switch {
 				case playing:
 					a.nowPlayingBars(c)
-				case hovered && a.canPlay(tr):
+				case hovered:
 					ui.Icon(c, iconPlay).Size(13, 13).TextColor(p.text)
 				default:
 					ui.Textf(c, "%d", i+1).FontSize(13).FontFeatures("tnum").TextColor(p.faint)
@@ -406,9 +403,6 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 				}
 				ui.RichText(c, spans...).FontSize(14).SingleLine()
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					if !a.canPlay(tr) {
-						ui.Text(c, "VIP").FontSize(9).FontWeight(800).TextColor(p.accent).Padding(0, 4).Radius(3).Border(1, p.accent.Alpha(0.6))
-					}
 					a.artistLinks(c, tr, p.muted, p.text).FontSize(12.5).SingleLine().Shrink(1).MinWidth(0)
 					if tr.Reason != "" {
 						ui.Text(c, tr.Reason).FontSize(10.5).FontWeight(600).TextColor(p.accent).Padding(1, 6).Radius(999).Background(p.accent.Alpha(0.1)).SingleLine()
@@ -433,7 +427,7 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 			})
 			ui.Text(c, clock(tr.Length())).FontSize(12.5).FontFeatures("tnum").TextColor(p.faint).Width(44).TextAlign(ui.End)
 		})
-		if row.Clicked() && a.canPlay(tr) {
+		if row.Clicked() {
 			a.pl.PlayQueue(tracks, i)
 		}
 	}).Grow(1).Padding(top+pageGap, pagePad-12, bottom+32, pagePad-12).ScrollbarInsets(top, 0, bottom, 0)

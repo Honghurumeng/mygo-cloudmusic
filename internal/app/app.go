@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"netease-music-mygo/internal/chksz"
 	"netease-music-mygo/internal/netease"
 	"netease-music-mygo/internal/player"
 )
@@ -140,9 +141,10 @@ type app struct {
 	settingsWin *mygo.Window
 	cacheUsed   int64 // the bytes the song cache takes, -1 until measured
 	updates     bool  // the update plugin is used (useUpdater)
-	// chksz is the ChKSz key to play with, "" to play only as NetEase
-	// streams (chkszKey).
-	chksz string
+	// chksz resolves the streams NetEase won't without a session: nil to
+	// play only as NetEase streams (newChKSz). It keeps what it resolved
+	// and how much of the API's quota is left, so it is made once.
+	chksz *chksz.Client
 
 	restored     bool   // playback picked up where it was left
 	savedSession string // the session as last kept
@@ -206,7 +208,7 @@ func Run() error {
 	mygo.App.WhenReady(func() {
 		a.settings = loadSettings()
 		a.settings.applyAppearance()
-		a.chksz = chkszKey(a.settings)
+		a.chksz = newChKSz(a.settings)
 		a.npPane = a.lyricsPaneChosen()
 		// Before the window: on Windows it lays out its content as it is
 		// made, and the view asks the player what plays.

@@ -21,6 +21,15 @@ const (
 	RepeatOne
 )
 
+// StopError is why playback cannot go on: the service the songs come from
+// is out of quota, refused the key, or asked to wait. The next song would
+// meet it too, so the queue stops rather than skipping through every song
+// to fail them all.
+type StopError struct{ Err error }
+
+func (e *StopError) Error() string { return e.Err.Error() }
+func (e *StopError) Unwrap() error { return e.Err }
+
 // Player plays a queue of tracks. Its methods run on the main thread;
 // loading happens on goroutines, whose results post brings back there.
 type Player struct {
@@ -641,8 +650,10 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 				default:
 					p.err = "这首歌需要 VIP 才能播放"
 				}
-				// Skip what cannot play, unless nothing in the queue can.
-				if skipped+1 < len(p.order) {
+				// Skip what cannot play, unless nothing in the queue
+				// can, or the reason would fail the next song too.
+				var stop *StopError
+				if skipped+1 < len(p.order) && !errors.As(err, &stop) {
 					next := at + 1
 					if next >= len(p.order) {
 						next = 0

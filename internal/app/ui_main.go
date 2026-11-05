@@ -441,7 +441,7 @@ func dailyRenewed(loaded, now time.Time) bool {
 func (a *app) loadPlaylist(id int64, thenPlay bool) {
 	if pl := a.playlists[id]; pl != nil {
 		if thenPlay {
-			a.pl.PlayQueue(pl.Tracks, a.firstPlayable(pl.Tracks))
+			a.pl.PlayQueue(pl.Tracks, 0)
 		}
 		return
 	}
@@ -460,19 +460,8 @@ func (a *app) loadPlaylist(id int64, thenPlay bool) {
 			}
 			a.playlists[id] = pl
 			if thenPlay {
-				a.pl.PlayQueue(pl.Tracks, a.firstPlayable(pl.Tracks))
+				a.pl.PlayQueue(pl.Tracks, 0)
 			}
 		})
 	}()
-}
-
-// firstPlayable returns the index of the first track that plays, or 0 if
-// none does.
-func (a *app) firstPlayable(tracks []netease.Track) int {
-	for i := range tracks {
-		if a.canPlay(&tracks[i]) {
-			return i
-		}
-	}
-	return 0
 }
