@@ -51,8 +51,15 @@ type app struct {
 	history []route
 	forward []route // the pages gone back from, the last first to go to
 
-	profile      *netease.Profile
-	mine, saved  []netease.Playlist // the listener's playlists: made, and saved
+	profile     *netease.Profile
+	mine, saved []netease.Playlist // the listener's playlists: made, and saved
+	// local are the playlists kept on this computer, which need no account
+	// (localplaylists.go): localPath is where they were read from, and are
+	// saved to. savedHere are the playlists saved on this computer, while
+	// signed out or before signing in.
+	local        []localPlaylist
+	savedHere    []netease.Playlist
+	localPath    string
 	savingPl     map[int64]bool     // the playlists whose saving or its end is on its way
 	recPlaylists []netease.Playlist // the day's playlists picked for the listener
 	login        loginState
@@ -216,6 +223,7 @@ func Run() error {
 	moveOldData()
 	mygo.App.WhenReady(func() {
 		a.settings = loadSettings()
+		a.loadLocalPlaylists()
 		a.settings.applyAppearance()
 		a.chksz = newChKSz(a.settings)
 		a.npPane = a.lyricsPaneChosen()

@@ -260,8 +260,11 @@ func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 		})
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			kind := "歌单"
-			if pl.UpdateFreq != "" {
+			switch {
+			case pl.UpdateFreq != "":
 				kind = "榜单 · " + pl.UpdateFreq
+			case a.isLocal(pl.ID):
+				kind = "本地歌单"
 			}
 			ui.Text(c, kind).FontSize(12).FontWeight(600).TextColor(p.accent)
 			ui.Text(c, pl.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
@@ -290,7 +293,9 @@ func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 					}
 					a.pl.PlayQueue(pl.Tracks, 0)
 				}
-				if a.savable(pl) {
+				// A local playlist is the listener's already: nothing to
+				// save it to NetEase.
+				if !a.isLocal(pl.ID) && a.savable(pl) {
 					icon, label := iconPlus, "收藏"
 					if a.isSaved(pl) {
 						icon, label = iconCheck, "已收藏"
@@ -313,6 +318,9 @@ func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 				}
 				switch {
 				case pl.SpecialType != 5:
+				case a.isLocal(pl.ID):
+					// 心动模式 is NetEase's, of the songs it keeps: the ones
+					// liked here have none.
 				case a.pl.Radio() == heartRadio:
 					if pillButton(c.Key("heart"), iconX, "退出心动模式", p.hover.Over(p.bg), p.text).Clicked() {
 						a.exitRadio()

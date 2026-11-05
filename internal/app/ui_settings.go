@@ -240,7 +240,7 @@ func (a *app) settingsView(c *ui.Context) {
 
 		group("账号", func() {
 			if a.profile == nil {
-				row("未登录", "登录后，每日推荐与歌单将根据你的口味生成", func() {
+				row("未登录", "登录后，每日推荐会按你的口味生成，歌单与喜欢同步到云端；本机也能建歌单", func() {
 					if ui.PrimaryButton(c.Key("login"), "扫码登录").Clicked() {
 						a.showMain()
 						a.openLogin()

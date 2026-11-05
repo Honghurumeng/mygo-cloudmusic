@@ -40,8 +40,16 @@ type deleteDialog struct {
 }
 
 // editable returns the listener's playlist id if they may edit its songs
-// and name, or nil: the liked songs' are their hearts'.
+// and name, or nil: the liked songs' are their hearts'. A local playlist
+// comes as a copy, without its songs: what is kept of it is the store's.
 func (a *app) editable(id int64) *netease.Playlist {
+	if i := a.localIndex(id); i >= 0 {
+		if a.local[i].Special == 5 {
+			return nil
+		}
+		pl := a.local[i].listed()
+		return &pl
+	}
 	for i := range a.mine {
 		if a.mine[i].ID == id && a.mine[i].SpecialType != 5 {
 			return &a.mine[i]
@@ -51,9 +59,11 @@ func (a *app) editable(id int64) *netease.Playlist {
 }
 
 // isSaved reports whether the listener saved playlist pl, as its page or
-// the sidebar says.
+// the sidebar says: with NetEase or on this computer.
 func (a *app) isSaved(pl *netease.Playlist) bool {
-	return pl.Subscribed || slices.ContainsFunc(a.saved, func(s netease.Playlist) bool { return s.ID == pl.ID })
+	return pl.Subscribed ||
+		slices.ContainsFunc(a.saved, func(s netease.Playlist) bool { return s.ID == pl.ID }) ||
+		a.savedHereIndex(pl.ID) >= 0
 }
 
 // savable reports whether the listener may save playlist pl: anyone's but
@@ -64,14 +74,14 @@ func (a *app) savable(pl *netease.Playlist) bool {
 
 // toggleSaved saves playlist pl for the listener, or unsaves it, at once
 // in the app and then with NetEase, going back if NetEase refuses. Signed
-// out, it asks the listener to sign in.
+// out, or saved here before signing in, it is kept on this computer.
 func (a *app) toggleSaved(pl netease.Playlist) {
-	if a.profile == nil {
-		a.showMain()
-		a.openLogin()
+	id := pl.ID
+	cloud := slices.ContainsFunc(a.saved, func(s netease.Playlist) bool { return s.ID == id })
+	if a.profile == nil || (a.savedHereIndex(id) >= 0 && !cloud) {
+		a.toggleSavedHere(pl)
 		return
 	}
-	id := pl.ID
 	if a.savingPl[id] {
 		return
 	}
@@ -95,10 +105,33 @@ func (a *app) toggleSaved(pl netease.Playlist) {
 			case save:
 				a.toast = "已收藏"
 			default:
+				a.unsaveHere(id)
 				a.toast = "已取消收藏"
 			}
 		})
 	}()
+}
+
+// toggleSavedHere saves playlist pl on this computer, or unsaves it there:
+// at once, with NetEase hearing nothing of it.
+func (a *app) toggleSavedHere(pl netease.Playlist) {
+	if a.savedHereIndex(pl.ID) >= 0 {
+		a.unsaveHere(pl.ID)
+		a.markSaved(pl.ID, false)
+		a.toast = "已取消收藏"
+		return
+	}
+	a.saveHere(pl)
+	a.markSaved(pl.ID, true)
+	a.toast = "已收藏，保存在本机"
+}
+
+// markSaved says on the page of playlist id, if it is loaded, whether the
+// listener saved it.
+func (a *app) markSaved(id int64, saved bool) {
+	if loaded := a.playlists[id]; loaded != nil {
+		loaded.Subscribed = saved
+	}
 }
 
 // setSaved marks playlist pl saved or not, on its page and in the sidebar,
@@ -148,13 +181,8 @@ func (a *app) playlistChanged(id int64) {
 }
 
 // newPlaylist asks for the name of a playlist to make, then adds tr to it
-// if set. Signed out, it asks the listener to sign in.
+// if set: made at NetEase when signed in, and on this computer otherwise.
 func (a *app) newPlaylist(tr *netease.Track) {
-	if a.profile == nil {
-		a.showMain()
-		a.openLogin()
-		return
-	}
 	a.naming = nameDialog{open: true, add: tr}
 }
 
@@ -180,6 +208,9 @@ func (a *app) submitName() {
 		}
 		old := pl.Name
 		a.setPlaylistName(id, name)
+		if a.isLocal(id) {
+			return
+		}
 		go func() {
 			err := renamePlaylist(id, name)
 			a.post(func() {
@@ -191,8 +222,14 @@ func (a *app) submitName() {
 		}()
 		return
 	}
-	d.busy = true
 	add := d.add
+	if a.profile == nil {
+		// No account to keep it: the playlist stays on this computer.
+		d.open = false
+		a.newLocalPlaylist(name, add)
+		return
+	}
+	d.busy = true
 	go func() {
 		pl, err := createPlaylist(name)
 		a.post(func() {
@@ -229,23 +266,17 @@ func (a *app) confirmDelete(pl *netease.Playlist) {
 func (a *app) deleteChosen() {
 	id := a.deleting.id
 	a.deleting.open = false
+	if a.localIndex(id) >= 0 {
+		a.dropLocal(id)
+		return
+	}
 	i := slices.IndexFunc(a.mine, func(pl netease.Playlist) bool { return pl.ID == id })
 	if i < 0 || a.mine[i].SpecialType == 5 {
 		return
 	}
 	pl := a.mine[i]
 	a.mine = slices.Delete(slices.Clone(a.mine), i, i+1)
-	// Leave no way back to its page, and leave it for the page before.
-	gone := func(r route) bool { return r.page == pagePlaylist && r.id == id }
-	a.history = slices.DeleteFunc(a.history, gone)
-	a.forward = slices.DeleteFunc(a.forward, gone)
-	if gone(a.route) {
-		r := route{page: pageHome}
-		if n := len(a.history); n > 0 {
-			r, a.history = a.history[n-1], a.history[:n-1]
-		}
-		a.show(r)
-	}
+	a.leavePlaylist(id)
 	go func() {
 		err := deletePlaylist(id)
 		a.post(func() {
@@ -260,7 +291,30 @@ func (a *app) deleteChosen() {
 	}()
 }
 
+// leavePlaylist leaves the page of playlist id for the one before it, if
+// it is the page shown, and leaves no way back to it.
+func (a *app) leavePlaylist(id int64) {
+	gone := func(r route) bool { return r.page == pagePlaylist && r.id == id }
+	a.history = slices.DeleteFunc(a.history, gone)
+	a.forward = slices.DeleteFunc(a.forward, gone)
+	if gone(a.route) {
+		r := route{page: pageHome}
+		if n := len(a.history); n > 0 {
+			r, a.history = a.history[n-1], a.history[:n-1]
+		}
+		a.show(r)
+	}
+}
+
 func (a *app) setPlaylistName(id int64, name string) {
+	if i := a.localIndex(id); i >= 0 {
+		a.local[i].Name = name
+		if pl := a.playlists[id]; pl != nil {
+			pl.Name = name
+		}
+		a.saveLocalPlaylists()
+		return
+	}
 	if pl := a.editable(id); pl != nil {
 		pl.Name = name
 	}
@@ -271,6 +325,14 @@ func (a *app) setPlaylistName(id int64, name string) {
 
 // addTo adds tr to the listener's playlist pid; a toast says how it went.
 func (a *app) addTo(pid int64, tr *netease.Track) {
+	if a.localIndex(pid) >= 0 {
+		if a.addLocal(pid, tr) {
+			a.toast = "已添加到歌单"
+		} else {
+			a.toast = "歌曲已在歌单中"
+		}
+		return
+	}
 	id := tr.ID
 	go func() {
 		err := addToPlaylist(pid, id)
@@ -291,6 +353,10 @@ func (a *app) addTo(pid int64, tr *netease.Track) {
 // removeFrom takes tr out of the listener's playlist pid, at once in the
 // app and then with NetEase, which may refuse: the song comes back then.
 func (a *app) removeFrom(pid int64, tr *netease.Track) {
+	if a.localIndex(pid) >= 0 {
+		a.removeLocal(pid, tr.ID)
+		return
+	}
 	id := tr.ID
 	pl := a.playlists[pid]
 	var before []netease.Track
@@ -319,29 +385,26 @@ func (a *app) removeFrom(pid int64, tr *netease.Track) {
 }
 
 // playlistItems are the items of a song's menu that put it in the
-// listener's playlists, or take it out of pid, the one it is listed in, if
-// set.
+// listener's playlists, those NetEase keeps and those kept on this
+// computer, or take it out of pid, the one it is listed in, if set.
 func (a *app) playlistItems(m *ui.Menu, tr *netease.Track, pid int64) {
-	if a.profile == nil {
-		return
-	}
 	m.Separator()
 	m.Submenu("添加到歌单", func(m *ui.Menu) {
 		if m.Item("新建歌单…").Chosen() {
 			a.newPlaylist(tr)
 		}
-		var to []*netease.Playlist
-		for i := range a.mine {
-			if pl := &a.mine[i]; pl.SpecialType != 5 && pl.ID != pid {
+		var to []netease.Playlist
+		for _, pl := range a.allMine() {
+			if pl.SpecialType != 5 && pl.ID != pid {
 				to = append(to, pl)
 			}
 		}
 		if len(to) > 0 {
 			m.Separator()
 		}
-		for _, pl := range to {
-			if m.Item(pl.Name).Chosen() {
-				a.addTo(pl.ID, tr)
+		for i := range to {
+			if m.Item(to[i].Name).Chosen() {
+				a.addTo(to[i].ID, tr)
 			}
 		}
 	})

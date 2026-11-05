@@ -38,8 +38,13 @@ func (a *app) loadLiked(uid int64) {
 
 // toggleLike likes a song or an episode, or unlikes it, at once in the app
 // and then with NetEase, which may refuse: the heart goes back then. Signed
-// out, it asks the listener to sign in.
+// out, a song is liked on this computer, in 我喜欢的音乐; an episode still
+// asks the listener to sign in.
 func (a *app) toggleLike(tr *netease.Track) {
+	if a.profile == nil && tr.ProgramID == 0 {
+		a.likeHere(*tr)
+		return
+	}
 	if a.profile == nil {
 		a.showMain()
 		a.openLogin()
@@ -106,7 +111,7 @@ func (a *app) likeCurrent() {
 	}
 	a.toggleLike(tr)
 	switch {
-	case a.profile == nil:
+	case a.profile == nil && tr.ProgramID != 0:
 		return // asked to sign in
 	case !a.isLiked(tr):
 		a.toast = "已取消喜欢"
@@ -199,7 +204,7 @@ func (a *app) likeButton(c *ui.Context, tr *netease.Track, size float32, color u
 	burst := ui.Local(wrap, "burst", func() time.Time { return time.Time{} })
 	if b.Clicked() {
 		switch {
-		case a.profile == nil:
+		case a.profile == nil && tr.ProgramID != 0:
 		case liked:
 			b.Jump("pop", 0.8)
 		default:

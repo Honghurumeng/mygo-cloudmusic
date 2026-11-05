@@ -188,8 +188,8 @@ func (a *app) sidebar(c *ui.Context) {
 			if a.searched.query != "" {
 				a.navItem(c, iconSearch, "搜索结果", a.searched)
 			}
-			a.myPlaylists(c, "我的歌单", a.mine, true, &a.mineCollapsed)
-			a.myPlaylists(c, "收藏的歌单", a.saved, false, &a.savedCollapsed)
+			a.myPlaylists(c, "我的歌单", a.allMine(), true, &a.mineCollapsed)
+			a.myPlaylists(c, "收藏的歌单", a.allSaved(), false, &a.savedCollapsed)
 		})
 
 		// What plays, as a card at the foot of the sidebar, over who listens.
@@ -442,6 +442,15 @@ func (a *app) loadPlaylist(id int64, thenPlay bool) {
 	if pl := a.playlists[id]; pl != nil {
 		if thenPlay {
 			a.pl.PlayQueue(pl.Tracks, 0)
+		}
+		return
+	}
+	if i := a.localIndex(id); i >= 0 {
+		// Kept on this computer: its songs are here, no asking.
+		view := a.local[i].view()
+		a.playlists[id] = &view
+		if thenPlay {
+			a.pl.PlayQueue(view.Tracks, 0)
 		}
 		return
 	}

@@ -62,6 +62,9 @@ func (a *app) signedIn(prof *netease.Profile) {
 	a.load(a.route)
 	a.loadHome()
 	if prof == nil {
+		// Nothing of NetEase says which songs are liked: those liked here
+		// fill the hearts.
+		a.seedLiked()
 		return
 	}
 	a.loadLiked(prof.UserID)
@@ -213,7 +216,7 @@ func (a *app) loginDialog(c *ui.Context) {
 				}
 			})
 		})
-		ui.Text(c, "登录后，每日推荐与歌单将根据你的口味生成").FontSize(11.5).TextColor(p.faint).Margin(16, 0, 0, 0)
+		ui.Text(c, "登录后，每日推荐会按你的口味生成，歌单与喜欢同步到云端").FontSize(11.5).TextColor(p.faint).Margin(16, 0, 0, 0)
 	})
 }
 
@@ -272,9 +275,11 @@ func (a *app) settingsRow(c *ui.Context) {
 
 // myPlaylists lists the listener's playlists under a header that opens
 // and closes them: those they made, if mine, with a button to make one
-// and a menu to rename them, or else with a menu to unsave them.
+// and a menu to rename them, or else with a menu to unsave them. Their own
+// show even when there are none, as one kept on this computer needs no
+// account.
 func (a *app) myPlaylists(c *ui.Context, title string, lists []netease.Playlist, mine bool, collapsed *bool) {
-	if len(lists) == 0 {
+	if len(lists) == 0 && !mine {
 		return
 	}
 	p := a.pal
@@ -302,6 +307,9 @@ func (a *app) myPlaylists(c *ui.Context, title string, lists []netease.Playlist,
 	})
 	if *collapsed {
 		return
+	}
+	if len(lists) == 0 {
+		a.firstPlaylistRow(c)
 	}
 	for i := range lists {
 		pl := &lists[i]
@@ -338,5 +346,23 @@ func (a *app) myPlaylists(c *ui.Context, title string, lists []netease.Playlist,
 		if b.Clicked() {
 			a.open(route{page: pagePlaylist, id: pl.ID})
 		}
+	}
+}
+
+// firstPlaylistRow makes the first playlist: signed out, it is here that
+// playlists begin, and the row says so.
+func (a *app) firstPlaylistRow(c *ui.Context) {
+	p := a.pal
+	b := ui.ButtonBase(c.Key("first-playlist")).Height(30).PaddingX(8).Gap(8).Radius(8).
+		AlignItems(ui.Center).Justify(ui.Start).FocusRing(false).Label("创建第一个歌单")
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Children(func() {
+		ui.Icon(c, iconPlus).Size(12, 12).TextColor(p.faint)
+		ui.Text(c, "创建第一个歌单").FontSize(12.5).TextColor(p.muted).SingleLine()
+	})
+	if b.Clicked() {
+		a.newPlaylist(nil)
 	}
 }

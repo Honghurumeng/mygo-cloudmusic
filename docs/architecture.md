@@ -37,7 +37,7 @@ internal/app         界面、路由、播放状态、设置、字幕调度
 启动顺序（`app.Run`）：
 
 1. `moveOldData` 把旧名字下的数据目录搬到当前名字下；
-2. `WhenReady` 里读设置、应用外观、按设置建 ChKSz 客户端；
+2. `WhenReady` 里读设置与本机的歌单（`playlists.json`）、应用外观、按设置建 ChKSz 客户端；
 3. 建封面缓存与播放器，接上 `Resolve`（音源解析）、`Cache`、`Changed`；
 4. 建主窗口与菜单，`boot()` 在后台恢复登录态，再 `newNotch`（仅 macOS）、同步 Dock 与托盘；
 5. `OnBeforeQuit` 保存设置、音量与播放会话。
@@ -92,7 +92,7 @@ type route struct {
 | `pageHome` 为你推荐 | 问候与日期、每日推荐卡、今日推荐歌单、官方榜单、推荐歌单 | `loadHome`；窗口重新获得焦点时检查，网易云在北京时间 6:00 换新后重新加载 |
 | `pageDaily` 每日推荐 | 当日歌曲、播放全部、随机播放 | `netease.DailySongs` |
 | `pageCharts` 排行榜 | 官方榜与各类榜单卡片 | `netease.Charts` |
-| `pagePlaylist` 歌单 | 封面、作者、歌曲列表；自己的歌单可改名、删歌、删除；可收藏/取消收藏；可开启心动模式 | `loadPlaylist` |
+| `pagePlaylist` 歌单 | 封面、作者、歌曲列表；自己的歌单可改名、删歌、删除；可收藏/取消收藏（未登录也能收藏，存在本机）；可开启心动模式。本机的歌单标着「本地歌单」，没有收藏与心动模式 | `loadPlaylist`（本机的直接取自 `a.local`） |
 | `pageSearch` 搜索 | 单曲、歌手、专辑、歌单、用户、播客，分页加载 | `loadSearch` |
 | `pageFM` 私人 FM | 推荐 / 熟悉 / 探索三种模式，播放时显示大封面 | `netease.PersonalFM` |
 | `pageArtist` 歌手 | 热门、最新、专辑、动态四个标签，可关注 | `loadArtist`、`loadLatest`、`loadAlbums`、`loadEvents` |
@@ -129,8 +129,8 @@ type route struct {
 | 拖动进度 | 播放条、正在播放大封面 | `player.Seek`，落点前后淡出淡入 |
 | 音量 / 静音 | 播放条音量弹层、滚轮 | `player.SetVolume` |
 | 喜欢歌曲 | 播放条、列表右键 | `netease.Like`，`ui_like.go` |
-| 加入 / 移出歌单 | 歌曲右键菜单 | `ui_songmenu.go`、`netease.AddToPlaylist` |
-| 新建 / 改名 / 删除歌单 | 歌单页、侧边栏 | `netease.CreatePlaylist`、`RenamePlaylist`、`DeletePlaylist` |
+| 加入 / 移出歌单 | 歌曲右键菜单 | `ui_songmenu.go`；云端的走 `netease.AddToPlaylist`，本机的走 `localplaylists.go` |
+| 新建 / 改名 / 删除歌单 | 歌单页、侧边栏、文件菜单 | 登录时 `netease.CreatePlaylist`、`RenamePlaylist`、`DeletePlaylist`；未登录时写本机的 `playlists.json`（`localplaylists.go`） |
 | 收藏歌单 | 歌单页 | `netease.SubscribePlaylist` |
 | 关注歌手 / 订阅播客 | 歌手页、播客页 | `netease.FollowArtist`、`SubscribePodcast` |
 | 心动模式 | 歌单页（「喜欢的歌单」除外） | `netease.HeartMode`，作为电台续播 |
@@ -179,6 +179,16 @@ FM 与心动模式用同一套「电台」：`PlayRadio` / `AttachRadio` 记下�
 ### 会话恢复
 
 播放位置、队列、顺序、随机与循环状态写进 `session.json`：播放中每 30 秒一次，退出时再写一次，写入用 `.part` 加改名保证原子。启动后等登录态恢复再读，接着上次暂停的位置；有电台就重新接上 feed。
+
+### 本地歌单
+
+歌单不登录也能用。本机的歌单存在用户数据目录的 `playlists.json`（`localplaylists.go`），歌单 ID 为负，网易云的不会，于是同一套页面、侧边栏与右键菜单都照用，只在增删改时按 ID 的正负决定写本机还是发请求。每首歌连同歌名、歌手、专辑与封面一起存，播放时照旧解析流地址；存的时候丢掉 `Privilege`，那是当时登录态下的判断，留下会过时。
+
+侧边栏的「我的歌单」先列网易云的，再列本机的；未登录时只剩本机的，一个都没有时给出一行「创建第一个歌单」。登录后新建仍存到网易云，本机的那些留着，登录或退出都不动它们；各页面清空缓存时（`signedIn`），本机歌单的页面从 `a.local` 重新构建，不发请求。
+
+「收藏」也分两条路：登录后点收藏照旧请求网易云；未登录时存进同一个 `playlists.json` 的 `saved` 里（只存歌单的封面、名字与作者，歌曲照旧按需向网易云取，歌单页面公开可得），侧边栏「收藏的歌单」把云端的与本机的合在一起列出，同 ID 只列一次。登录之前收藏的歌单在登录后仍归本机管，取消收藏时也不发请求。
+
+红心「喜欢」同理：未登录时 `toggleLike` 走 `likeHere`，把歌写进本机的「我喜欢的音乐」（`Special` 为 5、ID 为 `likesLocalID`，与网易云的那份同名同义），第一次喜欢时才建这个歌单；启动时 `seedLiked` 用它填满 `a.liked`，退出登录时再填一次，登录后 `a.liked` 仍由 `LikedIDs` 决定。它是心形按钮的歌单，不是拿来编排的：`editable` 对它返回 nil，所以没有改名、删除、从歌单移除，页面也不给心动模式（那是网易云按它的喜欢算的）。播客节目的喜欢没走这条路，仍然要登录。
 
 ## 网易云客户端
 
