@@ -436,7 +436,7 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 			ui.Text(c, clock(tr.Length())).FontSize(12.5).FontFeatures("tnum").TextColor(p.faint).Width(44).TextAlign(ui.End)
 		})
 		if row.Clicked() {
-			a.pl.PlayQueue(tracks, i)
+			a.pl.PlaySong(tracks, i)
 		}
 	}).Grow(1).Padding(top+pageGap, pagePad-12, bottom+32, pagePad-12).ScrollbarInsets(top, 0, bottom, 0)
 }

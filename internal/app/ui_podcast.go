@@ -94,8 +94,9 @@ func (a *app) loadPrograms(id int64) {
 }
 
 // playProgram plays the episodes loaded, from the one at i: those with
-// audio to play.
-func (a *app) playProgram(d *podcastData, i int) {
+// audio to play. picked says the listener clicked that episode, which one
+// that cannot play stays on, rather than another playing in its place.
+func (a *app) playProgram(d *podcastData, i int, picked bool) {
 	var queue []netease.Track
 	at := 0
 	for j := range d.programs {
@@ -107,9 +108,14 @@ func (a *app) playProgram(d *podcastData, i int) {
 		}
 		queue = append(queue, d.programs[j].Track(d.podcast))
 	}
-	if len(queue) > 0 {
-		a.pl.PlayQueue(queue, at)
+	if len(queue) == 0 {
+		return
 	}
+	if picked {
+		a.pl.PlaySong(queue, at)
+		return
+	}
+	a.pl.PlayQueue(queue, at)
 }
 
 // playPodcast plays a podcast's episodes from the newest, from its card,
@@ -125,7 +131,7 @@ func (a *app) playPodcast(id int64) {
 func (a *app) playLoaded(d *podcastData) {
 	if d.thenPlay && d.podcast != nil && d.page.loaded {
 		d.thenPlay = false
-		a.playProgram(d, 0)
+		a.playProgram(d, 0, false)
 	}
 }
 
@@ -212,7 +218,7 @@ func (a *app) podcastPage(c *ui.Context) {
 				}
 				ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
 					if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
-						a.playProgram(d, 0)
+						a.playProgram(d, 0, false)
 					}
 					icon, label := iconPlus, "订阅"
 					if pod.Subed {
@@ -274,7 +280,7 @@ func (a *app) programRow(c *ui.Context, d *podcastData, i int, cur *netease.Trac
 		ui.Text(c, clock(time.Duration(pr.Duration)*time.Millisecond)).FontSize(12).FontFeatures("tnum").TextColor(p.muted)
 	})
 	if row.Clicked() {
-		a.playProgram(d, i)
+		a.playProgram(d, i, true)
 	}
 }
 

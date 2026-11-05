@@ -312,3 +312,31 @@ func TestRedirectStaysOnHost(t *testing.T) {
 		t.Fatalf("a redirect elsewhere: %v, want it left unfollowed", err)
 	}
 }
+
+// A connection that breaks as a song is asked for is asked again: the
+// first ask after the app sits idle may lose it, and a song given up on
+// for that is one the queue played another in place of.
+func TestClientAsksAgainWhenTheConnectionBreaks(t *testing.T) {
+	clock := newClock()
+	var asks int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asks++
+		if asks == 1 {
+			panic(http.ErrAbortHandler)
+		}
+		anAnswer(w)
+	}))
+	defer srv.Close()
+	c := testClient(t, srv, clock)
+
+	st, err := c.SongURL(1, "lossless")
+	if err != nil {
+		t.Fatalf("asked once more: %v", err)
+	}
+	if asks != 2 {
+		t.Fatalf("%d asks, want the song asked for again", asks)
+	}
+	if st.URL == "" {
+		t.Errorf("resolved %+v", st)
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -286,11 +287,18 @@ func (c *Client) ready() error {
 
 // ask resolves a song with the API.
 func (c *Client) ask(id int64, level string) (*netease.Stream, error) {
-	res, err := c.get("/api/163_music", url.Values{
+	query := url.Values{
 		"id":     {strconv.FormatInt(id, 10)},
 		"level":  {levelOf(level)},
 		"apikey": {c.key},
-	})
+	}
+	res, err := c.get("/api/163_music", query)
+	if errors.Is(err, errUnreachable) {
+		// A connection that broke as it opened, which the first ask after
+		// the app sits idle may: asked once more, which usually gets
+		// through, so that a song is not given up on for it.
+		res, err = c.get("/api/163_music", query)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +362,21 @@ type response struct {
 	} `json:"data"`
 }
 
+// errUnreachable is the API not answering at all: a connection that broke
+// before it was made. Asking once more gets through, usually.
+var errUnreachable = errors.New("连不上 ChKSz，请检查网络")
+
+// unreachable returns why a request did not go through: errUnreachable for
+// one the API did not take, and the API being slow for one that ran out of
+// time, which asking again would only wait out twice.
+func unreachable(err error) error {
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return errors.New("ChKSz 响应太慢，稍后再试")
+	}
+	return errUnreachable
+}
+
 // get gets endpoint with query, and returns what it answered, or the
 // listener's reason why it didn't.
 func (c *Client) get(endpoint string, query url.Values) (*response, error) {
@@ -365,7 +388,7 @@ func (c *Client) get(endpoint string, query url.Values) (*response, error) {
 	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
-		return nil, errors.New("连不上 ChKSz，请检查网络")
+		return nil, unreachable(err)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)

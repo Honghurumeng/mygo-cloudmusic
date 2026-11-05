@@ -163,8 +163,24 @@ func (p *Player) ended() {
 	p.Next()
 }
 
-// PlayQueue replaces the queue with tracks and plays the one at start.
+// PlayQueue replaces the queue with tracks and plays the one at start,
+// going on to the next if it cannot play: the listener asked for the list,
+// not that song.
 func (p *Player) PlayQueue(tracks []netease.Track, start int) {
+	p.playQueue(tracks, start, false)
+}
+
+// PlaySong replaces the queue with tracks and plays the song at i, which
+// the listener picked: one that cannot play stays current, with the
+// reason, rather than another song starting in its place.
+func (p *Player) PlaySong(tracks []netease.Track, i int) {
+	p.playQueue(tracks, i, true)
+}
+
+// playQueue replaces the queue with tracks and plays the one at start.
+// picked says the listener chose that song rather than the list: another
+// song taking its place would not be what they asked to hear.
+func (p *Player) playQueue(tracks []netease.Track, start int, picked bool) {
 	if len(tracks) == 0 {
 		return
 	}
@@ -175,12 +191,16 @@ func (p *Player) PlayQueue(tracks []netease.Track, start int) {
 	for i := range p.order {
 		p.order[i] = i
 	}
+	at := start
 	if p.shuffle {
 		p.shuffleOrder(start)
-		p.load(0)
+		at = 0
+	}
+	if picked {
+		p.play(at)
 		return
 	}
-	p.load(start)
+	p.load(at)
 }
 
 // PlayRadio plays tracks in their order, then goes on with those feed
@@ -426,7 +446,7 @@ func (p *Player) Prev() {
 func (p *Player) Jump(i int) {
 	for k, v := range p.order {
 		if v == i {
-			p.load(k)
+			p.play(k)
 			return
 		}
 	}
@@ -441,7 +461,7 @@ func (p *Player) TogglePlay() {
 			p.playing = !p.playing
 			p.sync()
 		case len(p.order) > 0:
-			p.loadSkipping(max(p.at, 0), 0, true, p.pending)
+			p.loadSkipping(max(p.at, 0), 0, true, p.pending, true)
 		}
 		return
 	}
@@ -582,14 +602,27 @@ func (p *Player) stop() {
 	p.fade.attach(nil, 1)
 }
 
+// lyricsOf returns a track's lyrics, which load asks for beside the
+// stream: tests replace it, so that they play no network.
+var lyricsOf = netease.Lyrics
+
 // load plays the track at order[at], skipping those that cannot play.
 func (p *Player) load(at int) {
-	p.loadSkipping(at, 0, true, 0)
+	p.loadSkipping(at, 0, true, 0, false)
+}
+
+// play plays the track at order[at] as the listener picked it: one that
+// cannot play stays current, with the reason, rather than the queue going
+// on to another song, which the listener did not ask to hear.
+func (p *Player) play(at int) {
+	p.loadSkipping(at, 0, true, 0, true)
 }
 
 // loadSkipping loads the track at order[at], to play or not, from from,
-// skipping those that cannot play: skipped of them so far.
-func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
+// skipping those that cannot play: skipped of them so far. picked says the
+// listener chose the track, which a song that cannot play does not move
+// off: another song playing in its place would not be what they asked for.
+func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration, picked bool) {
 	p.stop()
 	p.gen++
 	gen := p.gen
@@ -615,7 +648,7 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 	}()
 
 	go func() {
-		lrc, trans, yrc, err := netease.Lyrics(t.ID)
+		lrc, trans, yrc, err := lyricsOf(t.ID)
 		var lines []lyrics.Line
 		if err == nil {
 			lines = lyrics.Build(lrc, trans, yrc)
@@ -651,14 +684,17 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 					p.err = "这首歌需要 VIP 才能播放"
 				}
 				// Skip what cannot play, unless nothing in the queue
-				// can, or the reason would fail the next song too.
+				// can, the reason would fail the next song too, or the
+				// listener picked this song: then it stays where it is,
+				// with why it does not play, rather than another song
+				// starting in its place.
 				var stop *StopError
-				if skipped+1 < len(p.order) && !errors.As(err, &stop) {
+				if !picked && skipped+1 < len(p.order) && !errors.As(err, &stop) {
 					next := at + 1
 					if next >= len(p.order) {
 						next = 0
 					}
-					p.loadSkipping(next, skipped+1, p.playing, 0)
+					p.loadSkipping(next, skipped+1, p.playing, 0, false)
 				} else {
 					p.playing = false
 					p.sync()
@@ -762,5 +798,5 @@ func (p *Player) Restore(s Session) {
 	}
 	p.queue, p.order = s.Queue, s.Order
 	p.shuffle, p.repeat = s.Shuffle, s.Repeat%3
-	p.loadSkipping(s.At, 0, false, time.Duration(s.Position)*time.Millisecond)
+	p.loadSkipping(s.At, 0, false, time.Duration(s.Position)*time.Millisecond, false)
 }

@@ -346,7 +346,7 @@ func TestEpisodeOpensPodcast(t *testing.T) {
 	a := catalogApp()
 	a.open(route{page: pagePodcast, id: 5})
 	d := a.podcasts[5]
-	a.playProgram(d, 0)
+	a.playProgram(d, 0, false)
 	a.pl.SetLyrics(nil)
 	a.nowPlaying, a.npPane = true, paneProgram
 	tt := ui.NewTester(a.view, 1200, 800)
