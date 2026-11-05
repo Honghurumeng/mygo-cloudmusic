@@ -27,6 +27,10 @@ type Player struct {
 	post func(func())
 	// Quality returns the stream level to load, as the settings say.
 	Quality func() string
+	// Resolve returns where a track streams from at level, as the settings
+	// say: NetEase, or a service that serves its songs without a session
+	// (chksz). It is netease.SongURL if not set.
+	Resolve func(id int64, level string) (*netease.Stream, error)
 	// Normalize reports whether to even out the loudness of tracks, as
 	// the settings say.
 	Normalize func() bool
@@ -685,8 +689,12 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 func (p *Player) open(t netease.Track, level string) (*netease.Stream, stream, error) {
 	dl, info, ok := p.Cache.lookup(t.ID, level)
 	if !ok {
+		fetch := netease.SongURL
+		if p.Resolve != nil {
+			fetch = p.Resolve
+		}
 		var err error
-		info, err = netease.SongURL(t.ID, level)
+		info, err = fetch(t.ID, level)
 		if err != nil {
 			return nil, nil, err
 		}

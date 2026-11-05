@@ -55,7 +55,6 @@ type app struct {
 	savingPl     map[int64]bool     // the playlists whose saving or its end is on its way
 	recPlaylists []netease.Playlist // the day's playlists picked for the listener
 	login        loginState
-	accountOpen  bool           // the dropdown of the account row shows
 	naming       nameDialog     // the name of a playlist asked for
 	deleting     deleteDialog   // whether to delete a playlist, asked
 	liked        map[int64]bool // the songs the listener likes
@@ -141,6 +140,9 @@ type app struct {
 	settingsWin *mygo.Window
 	cacheUsed   int64 // the bytes the song cache takes, -1 until measured
 	updates     bool  // the update plugin is used (useUpdater)
+	// chksz is the ChKSz key to play with, "" to play only as NetEase
+	// streams (chkszKey).
+	chksz string
 
 	restored     bool   // playback picked up where it was left
 	savedSession string // the session as last kept
@@ -204,6 +206,7 @@ func Run() error {
 	mygo.App.WhenReady(func() {
 		a.settings = loadSettings()
 		a.settings.applyAppearance()
+		a.chksz = chkszKey(a.settings)
 		a.npPane = a.lyricsPaneChosen()
 		// Before the window: on Windows it lays out its content as it is
 		// made, and the view asks the player what plays.
@@ -211,6 +214,7 @@ func Run() error {
 		a.pl = player.New(a.post)
 		a.pl.Quality = func() string { return a.settings.Quality }
 		a.pl.Normalize = func() bool { return a.settings.Normalize }
+		a.pl.Resolve = a.streamURL
 		a.pl.Cache = newSongCache(a.settings.CacheMB)
 		a.pl.Changed = func() {
 			a.keepSession()

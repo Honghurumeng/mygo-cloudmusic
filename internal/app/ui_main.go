@@ -196,7 +196,7 @@ func (a *app) sidebar(c *ui.Context) {
 		if tr := a.pl.Current(); tr != nil {
 			a.sidebarNowPlaying(c, tr)
 		}
-		a.accountRow(c)
+		a.settingsRow(c)
 	})
 }
 
@@ -441,7 +441,7 @@ func dailyRenewed(loaded, now time.Time) bool {
 func (a *app) loadPlaylist(id int64, thenPlay bool) {
 	if pl := a.playlists[id]; pl != nil {
 		if thenPlay {
-			a.pl.PlayQueue(pl.Tracks, firstPlayable(pl.Tracks))
+			a.pl.PlayQueue(pl.Tracks, a.firstPlayable(pl.Tracks))
 		}
 		return
 	}
@@ -460,15 +460,17 @@ func (a *app) loadPlaylist(id int64, thenPlay bool) {
 			}
 			a.playlists[id] = pl
 			if thenPlay {
-				a.pl.PlayQueue(pl.Tracks, firstPlayable(pl.Tracks))
+				a.pl.PlayQueue(pl.Tracks, a.firstPlayable(pl.Tracks))
 			}
 		})
 	}()
 }
 
-func firstPlayable(tracks []netease.Track) int {
+// firstPlayable returns the index of the first track that plays, or 0 if
+// none does.
+func (a *app) firstPlayable(tracks []netease.Track) int {
 	for i := range tracks {
-		if tracks[i].Playable() {
+		if a.canPlay(&tracks[i]) {
 			return i
 		}
 	}

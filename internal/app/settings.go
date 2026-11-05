@@ -26,6 +26,13 @@ type settings struct {
 	// Quality is the level of the streams: standard, higher, exhigh,
 	// lossless or hires.
 	Quality string `json:"quality"`
+	// NetEaseOnly plays songs only as NetEase streams them, signing in
+	// for what it keeps for subscribers: else the app plays through
+	// ChKSz what nobody signed in could (chksz.go).
+	NetEaseOnly bool `json:"neteaseOnly,omitempty"`
+	// ChKSzKey is the listener's ChKSz API key. Empty, the app reads one
+	// from the environment, or from a key file (chkszKey).
+	ChKSzKey string `json:"chkszKey,omitempty"`
 	// Appearance is light, dark, or system to follow the system.
 	Appearance string `json:"appearance"`
 	// Smoke makes the progress bars comets trailing smoke as music plays,

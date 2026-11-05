@@ -653,7 +653,7 @@ func (a *app) queuePane(c *ui.Context) {
 		case row.Hovered():
 			row.Background(white.Alpha(0.08))
 		}
-		if !tr.Playable() {
+		if !a.canPlay(tr) {
 			row.Opacity(0.4)
 		}
 		row.Children(func() {
@@ -664,7 +664,7 @@ func (a *app) queuePane(c *ui.Context) {
 			})
 			ui.Text(c, clock(tr.Length())).FontSize(12).FontFeatures("tnum").TextColor(white.Alpha(0.4))
 		})
-		if row.Clicked() && tr.Playable() && !playing {
+		if row.Clicked() && a.canPlay(tr) && !playing {
 			pl.Jump(i)
 		}
 	}).Grow(1).Padding(8, 0, 40, 0).Gap(2)
