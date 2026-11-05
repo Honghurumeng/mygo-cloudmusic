@@ -30,6 +30,8 @@ go tool mygo build   # 打包到 build/
 go test ./...        # 运行测试
 ```
 
+`go tool mygo build` 默认用 ad-hoc 签名，产物只能本机用；要正式分发得有自己的 Developer ID 证书。签名、公证与打包的细节见 [docs/packaging.md](docs/packaging.md)。
+
 ## 致谢
 
 - [MyGo](https://github.com/egoist/mygo)：原生 UI 与应用框架

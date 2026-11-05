@@ -97,7 +97,7 @@ func (a *app) applyTray() {
 }
 
 // trayMenu is the icon's menu: the window, the player's controls,
-// settings, updates, and quitting.
+// settings, and quitting.
 func (a *app) trayMenu() *mygo.Menu {
 	run := func(fn func()) func(*mygo.MenuItem, *mygo.Window) {
 		return func(*mygo.MenuItem, *mygo.Window) {
@@ -122,7 +122,6 @@ func (a *app) trayMenu() *mygo.Menu {
 		{Label: "喜欢/取消喜欢", Click: run(a.likeCurrent)},
 		mygo.Separator(),
 		{Label: "设置…", Click: run(front(a.openSettings))},
-		{Label: "检查更新…", Click: run(front(checkForUpdates))},
 		mygo.Separator(),
 		{Label: "退出" + name, Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
 	})

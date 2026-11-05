@@ -140,7 +140,6 @@ type app struct {
 	settings    settings
 	settingsWin *mygo.Window
 	cacheUsed   int64 // the bytes the song cache takes, -1 until measured
-	updates     bool  // the update plugin is used (useUpdater)
 	// chksz resolves the streams NetEase won't without a session: nil to
 	// play only as NetEase streams (newChKSz). It keeps what it resolved
 	// and how much of the API's quota is left, so it is made once.
@@ -204,7 +203,6 @@ func Run() error {
 		cacheUsed:  -1,
 	}
 	moveOldData()
-	a.useUpdater()
 	mygo.App.WhenReady(func() {
 		a.settings = loadSettings()
 		a.settings.applyAppearance()
