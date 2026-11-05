@@ -27,9 +27,9 @@ func TestCachedSongsList(t *testing.T) {
 	a.pl.Cache = player.NewCache(dir, 1<<30)
 	a.cacheUsed = 200
 	a.cacheSongs = a.pl.Cache.Songs()
-	a.cacheOpen = true
+	a.cacheOpen, a.settingsTab = true, "缓存"
 
-	tt := ui.NewTester(a.settingsView, 560, 720)
+	tt := ui.NewTester(a.settingsView, 760, 580)
 	tt.Frame()
 	for _, s := range []string{"宝船", "夜曲"} {
 		if !tt.HasText(s) {

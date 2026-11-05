@@ -28,7 +28,11 @@ func TestNewChKSz(t *testing.T) {
 func TestChKSzKeyTyped(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
-	tt := ui.NewTester(a.settingsView, 560, 1500)
+	tt := ui.NewTester(a.settingsView, 760, 580)
+	tt.Frame()
+	if err := tt.Click("音源"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
 	if err := tt.Click("ChKSz API Key"); err != nil {
 		t.Fatal(err)

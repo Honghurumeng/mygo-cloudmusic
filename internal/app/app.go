@@ -146,7 +146,8 @@ type app struct {
 
 	settings    settings
 	settingsWin *mygo.Window
-	cacheUsed   int64 // the bytes the song cache takes, -1 until measured
+	settingsTab string // the category the settings window shows, by its label
+	cacheUsed   int64  // the bytes the song cache takes, -1 until measured
 	// What the cache keeps, as the settings window lists it: read when it
 	// opens, to show how much each song takes and when it played last.
 	cacheSongs []player.CachedSong
