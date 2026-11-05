@@ -137,7 +137,12 @@ func pillButton(c *ui.Context, icon *ui.SVG, label string, bg, fg ui.Color) ui.E
 
 // cover shows an artwork, or a placeholder of the same size while it loads.
 func (a *app) cover(c *ui.Context, url string, px int, size, radius float32) ui.Element {
-	p := a.pal
+	return a.coverPal(c, a.pal, url, px, size, radius)
+}
+
+// coverPal shows an artwork over the colors of p, for a view of another
+// window than the app's, as the settings.
+func (a *app) coverPal(c *ui.Context, p palette, url string, px int, size, radius float32) ui.Element {
 	box := ui.Box(c).Size(size, size).Radius(radius).Center()
 	bmp := bitmap(a.art.get(netease.Sized(url, px), false))
 	in := artIn(box, bmp)

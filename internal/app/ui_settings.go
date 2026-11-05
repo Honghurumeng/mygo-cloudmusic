@@ -1,7 +1,9 @@
 package app
 
 import (
+	"fmt"
 	"runtime"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -56,6 +58,10 @@ func (a *app) settingsView(c *ui.Context) {
 	c.SetTheme(&t)
 	c.Root().Background(p.sidebar)
 	c.OnShortcut(ui.Cmd, ui.KeyW, func() { a.settingsWin.Close() })
+	if a.cacheOpen {
+		a.cacheSongsView(c, p)
+		return
+	}
 	s := &a.settings
 
 	ui.Scroll(c).Fill().Padding(24, 28, 32, 28).Gap(8).Children(func() {
@@ -196,9 +202,9 @@ func (a *app) settingsView(c *ui.Context) {
 					a.applyCacheLimit()
 				}
 			})
-			row("清除缓存", "删除保存在本机的全部歌曲", func() {
-				if ui.Button(c.Key("clear-cache"), "清除").Disabled(a.cacheUsed <= 0).Clicked() {
-					a.clearCache()
+			row("缓存明细", a.cacheCount()+"，可逐首查看与删除", func() {
+				if ui.Button(c.Key("cache-songs"), "管理").Clicked() {
+					a.openCacheSongs()
 				}
 			})
 		})
@@ -260,5 +266,86 @@ func (a *app) settingsView(c *ui.Context) {
 				}
 			})
 		})
+	})
+}
+
+// openCacheSongs shows the songs the cache keeps, in the settings window.
+func (a *app) openCacheSongs() {
+	a.cacheOpen, a.cacheList = true, ui.ListState{}
+	a.listCache()
+	a.redraw()
+}
+
+// cacheSongsView lists the songs the cache keeps, with how much each takes
+// and when it played last: the back button returns to the settings.
+func (a *app) cacheSongsView(c *ui.Context, p palette) {
+	a.applyCacheActions()
+	ui.Column(c).Fill().Children(func() {
+		ui.Row(c).Height(56).PaddingX(16).Gap(12).AlignItems(ui.Center).
+			BorderWidth(0, 0, 1, 0).BorderColor(p.hairline).Children(func() {
+			if iconButton(c.Key("back"), iconBack, 17, p.muted, "返回设置").Clicked() {
+				a.cacheOpen = false
+			}
+			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(1).Children(func() {
+				ui.Text(c, "歌曲缓存").FontSize(15).FontWeight(600)
+				ui.Text(c, a.cacheCount()).FontSize(12).TextColor(p.muted).SingleLine()
+			})
+			if len(a.cacheSongs) > 0 {
+				if ui.Button(c.Key("clear-all"), "清空").Clicked() {
+					a.cacheClearing = true
+				}
+			}
+		})
+		if len(a.cacheSongs) == 0 {
+			ui.Column(c).Grow(1).Center().Gap(7).Children(func() {
+				ui.Icon(c, iconNote).Size(30, 30).TextColor(p.faint)
+				ui.Text(c, "还没有缓存的歌曲").FontSize(13).FontWeight(500).TextColor(p.muted)
+				ui.Text(c, "播放过的歌曲会自动保存在本机").FontSize(12).TextColor(p.faint)
+			})
+			return
+		}
+		a.cacheList.Key = func(row int) any {
+			if row >= len(a.cacheSongs) {
+				return int64(-row - 1)
+			}
+			return a.cacheSongs[row].ID
+		}
+		ui.List(c.Key("cache-songs"), &a.cacheList, len(a.cacheSongs), func(i int) {
+			a.cachedSongRow(c, i, p)
+		}).Grow(1)
+	})
+}
+
+// cachedSongRow shows a song the cache keeps, and drops it when its trash
+// is clicked.
+func (a *app) cachedSongRow(c *ui.Context, i int, p palette) {
+	s := &a.cacheSongs[i]
+	row := ui.Row(c).Height(58).PaddingX(16).Gap(12).AlignItems(ui.Center)
+	bg := ui.Transparent
+	if row.Hovered() {
+		bg = p.hover
+	}
+	row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 100 * time.Millisecond}))
+	row.Children(func() {
+		a.coverPal(c, p, s.Cover, 72, 38, 6)
+		name := s.Name
+		if name == "" {
+			name = fmt.Sprintf("歌曲 %d", s.ID)
+		}
+		ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(3).Children(func() {
+			ui.Text(c, name).FontSize(13.5).FontWeight(500).SingleLine()
+			artists := s.Artists
+			if artists == "" {
+				artists = "未知歌手"
+			}
+			ui.Text(c, artists).FontSize(12).TextColor(p.muted).SingleLine()
+		})
+		ui.Column(c).AlignItems(ui.End).Gap(3).Children(func() {
+			ui.Text(c, cachedLevel(s.Level)+" · "+cachedSize(s.Size)).FontSize(11.5).TextColor(p.muted).SingleLine()
+			ui.Text(c, cachedAt(s.Kept)).FontSize(11.5).TextColor(p.faint).SingleLine()
+		})
+		if iconButton(c.Key("remove"), iconTrash, 15, p.muted, "删除 "+name).Clicked() {
+			a.cacheDropping = s.ID
+		}
 	})
 }

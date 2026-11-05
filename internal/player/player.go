@@ -709,7 +709,7 @@ func (p *Player) open(t netease.Track, level string) (*netease.Stream, stream, e
 		if err != nil {
 			return nil, nil, err
 		}
-		dl = p.Cache.download(t.ID, info)
+		dl = p.Cache.download(t, info)
 	}
 	s, err := openStream(dl, t.Duration)
 	if err != nil {

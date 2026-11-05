@@ -169,7 +169,7 @@ func TestCache(t *testing.T) {
 		f := c.part(st)
 		f.Write(make([]byte, n))
 		f.Close()
-		c.keep(id, st, f.Name(), int64(n))
+		c.keep(netease.Track{ID: id}, st, f.Name(), int64(n))
 	}
 	store(1, &netease.Stream{Level: "lossless", Type: "flac", Gain: -3}, 100)
 	dl, st, ok := c.lookup(1, "exhigh")

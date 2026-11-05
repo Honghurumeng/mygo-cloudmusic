@@ -140,6 +140,17 @@ type app struct {
 	settings    settings
 	settingsWin *mygo.Window
 	cacheUsed   int64 // the bytes the song cache takes, -1 until measured
+	// What the cache keeps, as the settings window lists it: read when it
+	// opens, to show how much each song takes and when it played last.
+	cacheSongs []player.CachedSong
+	cacheList  ui.ListState
+	cacheOpen  bool // the settings window shows the songs cached
+	cacheBusy  bool // the cache's songs are being read
+	// What the list drops as it next builds: a row builds while it shows,
+	// so dropping its song then would leave the list reading a shorter
+	// slice than it builds by.
+	cacheDropping int64 // the song to drop, or 0
+	cacheClearing bool  // every song is to drop
 	// chksz resolves the streams NetEase won't without a session: nil to
 	// play only as NetEase streams (newChKSz). It keeps what it resolved
 	// and how much of the API's quota is left, so it is made once.
