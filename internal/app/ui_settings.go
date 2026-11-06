@@ -272,12 +272,60 @@ func (a *app) playbackSettings(c *ui.Context, s *settings, group settingsGroup, 
 				a.changed()
 			}
 		})
-		row("锁定位置", "锁定后点按穿透歌词，落到下面的窗口；关闭后可以拖动歌词调整位置", func() {
+		row("锁定位置", "锁定后点按穿透歌词，落到下面的窗口；把指针移到歌词右上角的锁上，即便锁定着也能解锁", func() {
 			locked := s.DesktopLocked
 			if ui.Switch(c.Key("desktop-locked"), &locked).Label("锁定位置").Disabled(!s.DesktopLyrics).Changed() {
 				a.lockDesktopLyrics(locked)
 			}
 		})
+		row("宽度", "桌面歌词的宽度，放不下的一句会跟着唱到的位置向左滚动", func() {
+			w := float64(deskWidth(s.DesktopW))
+			dial(c, func() ui.Element {
+				return ui.Slider(c.Key("desktop-w"), &w, deskWMin, deskWMax).Step(10).
+					Label("桌面歌词宽度").Disabled(!s.DesktopLyrics)
+			}, func() {
+				s.DesktopW = int(w + 0.5)
+				a.changed()
+			}, fmt.Sprintf("%d", deskWidth(s.DesktopW)), 34)
+		})
+		row("高度", "桌面歌词的高度，字号随它定：越高，字越大", func() {
+			h := float64(deskHeight(s.DesktopH))
+			dial(c, func() ui.Element {
+				return ui.Slider(c.Key("desktop-h"), &h, deskHMin, deskHMax).Step(2).
+					Label("桌面歌词高度").Disabled(!s.DesktopLyrics)
+			}, func() {
+				s.DesktopH = int(h + 0.5)
+				a.changed()
+			}, fmt.Sprintf("%d", deskHeight(s.DesktopH)), 34)
+		})
+		row("背景", "歌词卡片的底色深浅，0 是全透明，只留下歌词", func() {
+			alpha := float64(deskAlpha(s.DesktopAlpha))
+			dial(c, func() ui.Element {
+				return ui.Slider(c.Key("desktop-alpha"), &alpha, 0, 100).Step(5).
+					Label("桌面歌词背景").Disabled(!s.DesktopLyrics)
+			}, func() {
+				s.DesktopAlpha = int(alpha + 0.5)
+				a.changed()
+			}, fmt.Sprintf("%d%%", deskAlpha(s.DesktopAlpha)), 38)
+		})
+		row("颜色", "歌词与逐字点亮的颜色，浅些的在深色的底上更清楚", func() {
+			if lyricColors(c.Key("desktop-color"), &s.DesktopColor, !s.DesktopLyrics) {
+				a.changed()
+			}
+		})
+	})
+}
+
+// dial lays a slider with the number it sets at its side: the two stay
+// together, and leave the row's label what room it needs.
+func dial(c *ui.Context, slider func() ui.Element, apply func(), value string, width float32) {
+	ink := paletteFor(c.Theme()).muted
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if sl := slider().Width(110).Shrink(0); sl.Changed() {
+			apply()
+		}
+		// The number never gives way: it is what the slider is set to.
+		ui.Text(c, value).FontSize(12).FontFeatures("tnum").TextColor(ink).Width(width).Shrink(0)
 	})
 }
 

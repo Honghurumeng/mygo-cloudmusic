@@ -46,6 +46,16 @@ type settings struct {
 	// DesktopLocked lets the pointer through the lyrics to what is under
 	// them; unlocked, they can be dragged where they go.
 	DesktopLocked bool `json:"desktopLocked"`
+	// DesktopW and DesktopH are the size of the lyrics' card, in points: the
+	// height decides the size the text is set in; 0 for each default.
+	DesktopW int `json:"desktopW,omitempty"`
+	DesktopH int `json:"desktopH,omitempty"`
+	// DesktopAlpha is how much of the lyrics' card shows, from 0 for none of
+	// it to 100 for all: what lets the desktop through it.
+	DesktopAlpha int `json:"desktopAlpha"`
+	// DesktopColor is the color of the lyrics, as #rrggbb, of those the
+	// settings offer; empty for white.
+	DesktopColor string `json:"desktopColor,omitempty"`
 	// DesktopX and DesktopY are where the lyrics were left, on the
 	// desktop they were left on, once DesktopPlaced.
 	DesktopX      int  `json:"desktopX"`
@@ -85,7 +95,8 @@ type settings struct {
 }
 
 func defaultSettings() settings {
-	return settings{NotchActivity: true, Quality: "exhigh", Appearance: "system", Volume: 0.8, Normalize: true, AppIcon: "dock-and-menubar", CacheMB: 2048, Captions: true, DesktopLocked: true}
+	return settings{NotchActivity: true, Quality: "exhigh", Appearance: "system", Volume: 0.8, Normalize: true, AppIcon: "dock-and-menubar", CacheMB: 2048, Captions: true, DesktopLocked: true,
+		DesktopW: deskWDefault, DesktopH: deskHDefault, DesktopAlpha: deskAlphaDefault}
 }
 
 func settingsPath() (string, error) {

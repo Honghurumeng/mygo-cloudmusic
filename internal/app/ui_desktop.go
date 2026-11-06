@@ -13,32 +13,72 @@ import (
 // desktopLyrics shows the song's lyrics in a panel that floats over the
 // windows of the other apps, on every Space: the line sung, each word
 // lighting up as it is, and under it the translation or the line to come.
-// Locked, the pointer goes through it to what is under; unlocked, it can
-// be dragged where the listener wants it.
+// The lock in their corner lets the pointer through to what is under them;
+// unlocked, they can be dragged where the listener wants.
 type desktopLyrics struct {
 	a   *app
 	win *mygo.Window
 
-	w int
+	// near says the pointer has come to the lock, which takes the pointer
+	// back to a window that otherwise lets it through.
+	near bool
+	// armed says the pointer left the lock since the lyrics were locked:
+	// the click that locked them must not bring the lock back at once.
+	armed bool
+	// lockRect is where the lock was drawn, in the window, as the last
+	// frame left it: the place the pointer has to come to.
+	lockRect ui.Rect
 	// saveGen counts the places the lyrics were dragged to, to keep the
 	// last once the drag settles.
 	saveGen int
 }
 
 const (
-	deskLyricsW = 760
-	// deskLyricsH is the window's height while unlocked, with the bar
-	// above the lyrics; locked, the lyrics alone need deskCardH.
-	deskLyricsH = 136
-	deskCardH   = 100
+	// deskWDefault and deskHDefault are the size the lyrics start at, and
+	// deskWMin..deskHMax bound what the listener may set: the card is as
+	// big as they say, and its height decides the size of the text.
+	deskWDefault = 760
+	deskHDefault = 84
+	deskWMin     = 320
+	deskWMax     = 1600
+	deskHMin     = 56
+	deskHMax     = 220
+	// deskAlphaDefault is how much of the card shows at first, of 0 to 100.
+	deskAlphaDefault = 40
 	// deskLyricsEdge is how far above the Dock the lyrics start.
 	deskLyricsEdge = 24
-	// deskLyricsPadX is the card's padding, on either side.
-	deskLyricsPadX = 26
+	// deskLineHeight is how tall a line stands against its size, deskSubScale
+	// how big the line under the line sung is against it, and deskGapScale
+	// the room between them against the card's height.
+	deskLineHeight = 1.18
+	deskSubScale   = 0.53
+	deskGapScale   = 0.032
+	// deskLockSize is the lock in the card's corner, and deskLockReach how
+	// near the pointer may come to it, locked, for the lyrics to take the
+	// pointer: a near miss still finds the button.
+	deskLockSize  = 22
+	deskLockReach = 18
+	// deskLockGap is how often the locked lyrics look for the pointer: it
+	// comes quicker to one it has, and leaves to one it has not.
+	deskLockGap     = 150 * time.Millisecond
+	deskLockNearGap = 60 * time.Millisecond
+	// deskScrollGap is how often a line too long for the card is drawn
+	// again as it moves along.
+	deskScrollGap = 16 * time.Millisecond
+	// deskHeadHold and deskTailHold are the shares of a moving line that it
+	// stands still at its head, and at its tail: the line is sung a third
+	// of the way before it starts to go, and it comes to its end a third
+	// before the line is over.
+	deskHeadHold = 0.3
+	deskTailHold = 0.3
+	// deskWordDim is how faint the words of the line sung are before they
+	// are, and deskFirstDim how the first line shows before it starts.
+	deskWordDim  = 0.45
+	deskFirstDim = 0.55
 )
 
 func newDesktopLyrics(a *app) *desktopLyrics {
-	d := &desktopLyrics{a: a, w: deskLyricsW}
+	d := &desktopLyrics{a: a}
 	x, y := d.start()
 	d.win = mygo.NewWindow(mygo.WindowOptions{
 		Title:         "桌面歌词",
@@ -50,7 +90,7 @@ func newDesktopLyrics(a *app) *desktopLyrics {
 		DisableResize: true,
 		X:             x,
 		Y:             y,
-		Width:         d.w,
+		Width:         d.width(),
 		Height:        d.height(),
 		Content:       ui.View(d.view),
 	})
@@ -75,13 +115,146 @@ func (d *desktopLyrics) start() (x, y int) {
 	if s := &d.a.settings; s.DesktopPlaced {
 		return s.DesktopX, s.DesktopY
 	}
-	return deskLyricsSpot(mygo.Screen.PrimaryDisplay().WorkArea, d.w, d.height())
+	return deskLyricsSpot(mygo.Screen.PrimaryDisplay().WorkArea, d.width(), d.height())
 }
 
 // deskLyricsSpot is where the lyrics start on the work area of a display:
 // in the middle, above the Dock or the taskbar.
 func deskLyricsSpot(work mygo.Rectangle, w, h int) (x, y int) {
 	return work.X + (work.Width-w)/2, work.Y + work.Height - h - deskLyricsEdge
+}
+
+// deskWidth returns the width the lyrics take, kept within what they may.
+func deskWidth(pt int) int {
+	if pt <= 0 {
+		return deskWDefault
+	}
+	return min(max(pt, deskWMin), deskWMax)
+}
+
+// deskHeight returns the height the lyrics take, kept within what they may:
+// it is the height of the card, and what the text is set to fit.
+func deskHeight(pt int) int {
+	if pt <= 0 {
+		return deskHDefault
+	}
+	return min(max(pt, deskHMin), deskHMax)
+}
+
+// deskAlpha returns how much of the card shows, from 0 to 100. None of it
+// is a choice of its own: only the settings that were never set get the
+// default.
+func deskAlpha(pt int) int {
+	if pt < 0 {
+		return deskAlphaDefault
+	}
+	return min(pt, 100)
+}
+
+// deskPadX is the card's padding on either side: room for the lock in its
+// corner, and more on a wider card.
+func deskPadX(w int) float32 {
+	return float32(min(max(int(float32(w)*0.034+0.5), 26), 56))
+}
+
+// deskPadY is the card's padding above and below the lines, a share of its
+// height.
+func deskPadY(h int) float32 {
+	return float32(min(max(int(float32(h)*0.14+0.5), 8), 30))
+}
+
+// deskGap is the room between the line sung and the one under it.
+func deskGap(h int) float32 {
+	return float32(min(max(int(float32(h)*deskGapScale+0.5), 2), 6))
+}
+
+// deskTypeSize is the size the lyrics are set in, which the height of the
+// card decides: what its padding and the gap leave goes to the two lines,
+// the one under at deskSubScale of the one sung.
+func deskTypeSize(h int) float32 {
+	room := float32(h) - 2*deskPadY(h) - deskGap(h) - 4
+	if room < 10 {
+		room = 10
+	}
+	return room / (deskLineHeight * (1 + deskSubScale))
+}
+
+// deskProgress is how far the line has been sung, from 0 to 1: the share of
+// the line too long for the card that has come into view.
+func deskProgress(l *lyrics.Line, pos time.Duration) float32 {
+	span := l.End - l.At
+	if span <= 0 {
+		return 0
+	}
+	return clamp01(float32((pos - l.At).Seconds() / span.Seconds()))
+}
+
+// deskHeld spreads the part of the line sung over the part of it that
+// moves: the line stands still while its first third is sung, then goes to
+// its tail, which shows whole while the last third of it is still to sing.
+func deskHeld(p float32) float32 {
+	return clamp01((p - deskHeadHold) / (1 - deskHeadHold - deskTailHold))
+}
+
+// deskScroll returns where a line of the width given stands in a card that
+// leaves it the room given, once p of it has been sung: from its head,
+// which is flush with the card's padding, to its tail, which is too. A line
+// that fits stands where it is, and does not move.
+func deskScroll(width, room float32, p float32) (shift float32, moving bool) {
+	if width <= room-1 {
+		return 0, false
+	}
+	return -(width - room) * deskHeld(p), true
+}
+
+// deskColors are the colors the lyrics over the desktop may take, named as
+// the settings offer them: light ones, over the card's dark glass.
+var deskColors = []struct{ name, hex string }{
+	{"白色", "#ffffff"}, {"暖白", "#ffe8c7"}, {"粉色", "#ff9ec4"}, {"红色", "#ff6b6b"}, {"橙色", "#ffb26b"},
+	{"黄色", "#ffd166"}, {"绿色", "#7ee787"}, {"青色", "#67e8f9"}, {"蓝色", "#8ab4ff"}, {"紫色", "#c9a7ff"},
+}
+
+// deskInk returns the color of the lyrics: the one the listener chose of
+// those offered, or white for none.
+func deskInk(hex string) ui.Color {
+	for _, c := range deskColors {
+		if c.hex == hex {
+			return ui.Hex(c.hex)
+		}
+	}
+	return white
+}
+
+// lyricColors offers the colors the lyrics may take, the one chosen
+// ringed, and reports whether the user chose another.
+func lyricColors(c *ui.Context, chosen *string, disabled bool) bool {
+	before := *chosen
+	ring := c.Theme().Text.Alpha(0.8)
+	ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+		for _, col := range deskColors {
+			on := *chosen == col.hex || (*chosen == "" && col.hex == "#ffffff")
+			b := ui.ButtonBase(c.Key(col.hex)).Size(24, 24).Radius(999).Disabled(disabled).
+				Label("歌词颜色：" + col.name).Tooltip(col.name)
+			bg := ui.Transparent
+			if b.Hovered() && !disabled {
+				bg = ui.RGBA(128, 128, 128, 0.16)
+			}
+			b.Background(bg)
+			b.Draw(func(p *ui.Painter, r ui.Rect) {
+				cx, cy := r.X+r.W/2, r.Y+r.H/2
+				dot := ui.Rect{X: cx - 7, Y: cy - 7, W: 14, H: 14}
+				p.Fill(dot, ui.Hex(col.hex), 7)
+				p.Stroke(dot, ui.RGBA(0, 0, 0, 0.14), 7, 0.5)
+				if on {
+					p.Stroke(ui.Rect{X: cx - 10.5, Y: cy - 10.5, W: 21, H: 21}, ring, 10.5, 1.5)
+				}
+			})
+			if b.Clicked() && !disabled {
+				*chosen = col.hex
+			}
+		}
+	})
+	return *chosen != before
 }
 
 // place puts the lyrics where they were left, kept within the display
@@ -91,7 +264,7 @@ func (d *desktopLyrics) place() {
 		return
 	}
 	x, y := d.start()
-	d.win.SetBounds(withinDisplay(mygo.Rectangle{X: x, Y: y, Width: d.w, Height: d.height()}))
+	d.win.SetBounds(withinDisplay(mygo.Rectangle{X: x, Y: y, Width: d.width(), Height: d.height()}))
 }
 
 // withinDisplay moves r as little as it may to lie on its display's work
@@ -117,9 +290,8 @@ func (d *desktopLyrics) setEnabled(on bool) {
 		return
 	}
 	if !d.win.IsVisible() {
-		// The first time they show, the lyrics come unlocked, with the
-		// bar that says how to move them, so that the listener can put
-		// them where they want before locking them.
+		// The first time they show, the lyrics come unlocked, so that the
+		// listener can put them where they want before locking them.
 		if !d.a.settings.DesktopPlaced {
 			d.a.settings.DesktopLocked = false
 		}
@@ -136,37 +308,45 @@ func (d *desktopLyrics) invalidate() {
 }
 
 // applyLock lets the pointer through the lyrics, or not, as the settings
-// say, and gives them the room the bar needs while unlocked.
+// say, and gives them the room their size needs.
 func (d *desktopLyrics) applyLock() {
 	if d.win == nil {
 		return
 	}
+	d.near, d.armed = false, false
 	d.win.SetIgnoreMouseEvents(d.a.settings.DesktopLocked)
 	d.resize()
 	d.win.Invalidate()
 }
 
-// height is the window's height: room for the bar while unlocked.
-func (d *desktopLyrics) height() int {
-	if d.a.settings.DesktopLocked {
-		return deskCardH
-	}
-	return deskLyricsH
+// width is the window's width: the card the listener set.
+func (d *desktopLyrics) width() int {
+	return deskWidth(d.a.settings.DesktopW)
 }
 
-// resize gives the window the height it needs, its foot where it was, and
-// keeps where it now is.
+// height is the window's height: the card the listener set, which sets the
+// size of the text too.
+func (d *desktopLyrics) height() int {
+	return deskHeight(d.a.settings.DesktopH)
+}
+
+// resize gives the window the size the settings ask for: it grows about its
+// middle and from its foot, where the listener put it, and keeps where it
+// now is.
 func (d *desktopLyrics) resize() {
 	if d.win == nil {
 		return
 	}
 	r := d.win.Bounds()
-	h := d.height()
-	if r.Height == h {
+	w, h := d.width(), d.height()
+	if r.Width == w && r.Height == h {
 		return
 	}
+	r.X += (r.Width - w) / 2
 	r.Y += r.Height - h
-	r.Height = h
+	r.Width, r.Height = w, h
+	// A card grown past the edge of the display comes back onto it.
+	r = withinDisplay(r)
 	d.win.SetBounds(r)
 	s := &d.a.settings
 	s.DesktopX, s.DesktopY, s.DesktopPlaced = r.X, r.Y, true
@@ -233,17 +413,12 @@ func (d *desktopLyrics) view(c *ui.Context) {
 	tr := a.pl.Current()
 	lines, loaded := a.pl.Lyrics()
 	pos := a.pl.Position()
-	cur, main, sub, begun := desktopShown(lines, pos)
+	cur, _, sub, begun := desktopShown(lines, pos)
 
-	ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.End).Gap(7).Padding(0, 0, 6, 0).Children(func() {
-		if !a.settings.DesktopLocked {
-			d.bar(c)
-		}
-		d.card(c, tr, lines, loaded, cur, main, sub, begun, pos)
-	})
+	moving := d.card(c, tr, lines, loaded, cur, sub, begun, pos)
 
 	// Follow the song: the next line as it comes, each word as it is
-	// sung, and, unlocked, where the window was dragged to.
+	// sung, and a line too long for the card as it moves along.
 	if a.pl.Playing() {
 		next := cur + 1
 		if cur < 0 {
@@ -255,107 +430,213 @@ func (d *desktopLyrics) view(c *ui.Context) {
 		if begun && len(lines[cur].Words) > 0 && pos < lines[cur].End {
 			c.After(50 * time.Millisecond)
 		}
+		if moving {
+			c.After(deskScrollGap)
+		}
 	}
 	if tr != nil && !loaded {
 		// Lyrics come a moment after the song, which a paused player
 		// would not otherwise show.
 		c.After(200 * time.Millisecond)
 	}
-	if !a.settings.DesktopLocked {
+	d.watch(c)
+}
+
+// watch follows where the lyrics lie, and the pointer: dragged, they keep
+// where they were left; locked, they look for the pointer coming to the
+// lock, which is the one place they take it.
+func (d *desktopLyrics) watch(c *ui.Context) {
+	if d.win == nil {
+		return
+	}
+	if !d.a.settings.DesktopLocked {
 		d.moved()
 		c.After(400 * time.Millisecond)
+		return
+	}
+	at := d.pointing()
+	if !at {
+		// Away from the lock, it is ready to show again.
+		d.armed = true
+	}
+	if near := at && d.armed; near != d.near {
+		d.near = near
+		d.win.SetIgnoreMouseEvents(!near)
+		d.win.Invalidate()
+	}
+	if d.near {
+		c.After(deskLockNearGap)
+	} else {
+		c.After(deskLockGap)
 	}
 }
 
-// bar is the handle the lyrics show while unlocked: a hint, and the way
-// to lock them again.
-func (d *desktopLyrics) bar(c *ui.Context) {
-	ui.Row(c).Height(26).Padding(3, 4, 3, 10).Radius(13).
-		Background(ui.RGBA(0, 0, 0, 0.55)).
-		Border(0.5, ui.RGBA(255, 255, 255, 0.14)).
-		AlignItems(ui.Center).Gap(9).Children(func() {
-		ui.Text(c, "拖动歌词调整位置").FontSize(11.5).FontWeight(500).TextColor(ui.RGBA(255, 255, 255, 0.62))
-		b := ui.ButtonBase(c.Key("lock")).Padding(2, 8).Radius(10).FocusRing(false).Label("锁定桌面歌词")
-		b.Children(func() {
-			ui.Icon(c, iconLock).Size(12, 12).TextColor(ui.RGBA(255, 255, 255, 0.8))
-			ui.Text(c, "锁定").FontSize(11.5).FontWeight(600).TextColor(ui.RGBA(255, 255, 255, 0.85))
-		})
-		if b.Clicked() {
-			d.a.lockDesktopLyrics(true)
-		}
-	})
+// pointing reports whether the pointer is at the lock, or near it. A
+// window the pointer goes through hears nothing of it: where it is, read
+// off the screen, is what tells the lyrics to take the pointer back.
+func (d *desktopLyrics) pointing() bool {
+	if d.win == nil {
+		return false
+	}
+	r, b := d.lockRect, d.win.Bounds()
+	if r.W <= 0 || b.Width <= 0 {
+		return false
+	}
+	p := mygo.Screen.CursorScreenPoint()
+	return deskReached(r, float32(p.X-b.X), float32(p.Y-b.Y))
+}
+
+// deskReached reports whether x, y, in the window, is at the lock r or
+// within reach of it.
+func deskReached(r ui.Rect, x, y float32) bool {
+	return x >= r.X-deskLockReach && x <= r.X+r.W+deskLockReach &&
+		y >= r.Y-deskLockReach && y <= r.Y+r.H+deskLockReach
 }
 
 // card is the lyrics themselves: the line sung, and under it what it says
-// or what comes.
-func (d *desktopLyrics) card(c *ui.Context, tr *netease.Track, lines []lyrics.Line, loaded bool, cur int, main, sub string, begun bool, pos time.Duration) {
-	card := ui.Box(c).Padding(13, deskLyricsPadX).Radius(16).
-		Background(ui.RGBA(0, 0, 0, 0.4)).
-		Border(0.5, ui.RGBA(255, 255, 255, 0.14))
-	if !d.a.settings.DesktopLocked {
-		// Anywhere on the lyrics, but not on a button.
+// or what comes, with the lock in the corner. It reports whether the line
+// sung is moving, too long for the card to show at once.
+func (d *desktopLyrics) card(c *ui.Context, tr *netease.Track, lines []lyrics.Line, loaded bool, cur int, sub string, begun bool, pos time.Duration) (moving bool) {
+	s := &d.a.settings
+	size, ink := deskTypeSize(d.height()), deskInk(s.DesktopColor)
+	alpha := float32(deskAlpha(s.DesktopAlpha)) / 100
+
+	card := ui.Box(c.Key("card")).Fill().Radius(16).
+		Background(ui.RGBA(0, 0, 0, alpha)).
+		Border(0.5, ui.RGBA(255, 255, 255, 0.16*alpha))
+	if !s.DesktopLocked {
+		// Anywhere on the lyrics, but not on the lock.
 		card.DragWindow()
 	}
 	card.Children(func() {
-		ui.Column(c).AlignItems(ui.Center).Gap(3).Children(func() {
+		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Gap(deskGap(d.height())).
+			Padding(deskPadY(d.height()), deskPadX(d.width())).Children(func() {
 			switch {
 			case tr == nil:
-				d.plain(c, "未在播放", 20, 0.5)
+				d.plain(c, ink, "未在播放", size*0.66, 0.5)
 			case tr.PodcastID != 0:
-				d.plain(c, tr.Name, 22, 0.9)
-				d.plain(c, tr.ArtistNames()+" · 播客", 15, 0.55)
+				d.plain(c, ink, tr.Name, size*0.73, 0.9)
+				d.plain(c, ink, tr.ArtistNames()+" · 播客", size*deskSubScale, 0.55)
 			case !loaded:
-				d.plain(c, "正在加载歌词…", 20, 0.5)
+				d.plain(c, ink, "正在加载歌词…", size*0.66, 0.5)
 			case len(lines) == 0:
-				d.plain(c, "纯音乐，请欣赏", 22, 0.75)
+				d.plain(c, ink, "纯音乐，请欣赏", size*0.73, 0.75)
 			default:
 				if begun {
-					d.line(c, &lines[cur], pos)
+					moving = d.lyric(c, ink, size, &lines[cur], pos, deskWordDim)
 				} else {
-					d.plain(c, main, 30, 0.55)
+					// Before the first line is sung, it shows faint.
+					moving = d.lyric(c, ink, size, &lines[0], pos, deskFirstDim)
 				}
 				if sub != "" {
-					alpha := float32(0.62)
+					dim := float32(0.62)
 					if lines[cur].Translation == "" {
-						alpha = 0.42
+						dim = 0.42
 					}
-					d.plain(c, sub, 16, alpha)
+					d.plain(c, ink, sub, size*deskSubScale, dim)
 				}
 			}
 		})
+		d.lock(c, ink)
 	})
+	return moving
 }
 
-// plain sets a line of text, shrunk to fit the window.
-func (d *desktopLyrics) plain(c *ui.Context, text string, size, alpha float32) {
-	ui.Text(c, text).FontSize(d.fit(c, text, size, 600)).FontWeight(600).
-		TextColor(ui.RGBA(255, 255, 255, alpha)).SingleLine()
-}
-
-// line sets the line sung, each of its words lighting up as it is sung.
-func (d *desktopLyrics) line(c *ui.Context, l *lyrics.Line, pos time.Duration) {
-	size := d.fit(c, l.Text, 30, 800)
-	if len(l.Words) == 0 {
-		ui.Text(c, l.Text).FontSize(size).FontWeight(800).LetterSpacing(-0.4).
-			TextColor(white).SingleLine()
-		return
+// lock is the button in the card's corner: unlocked, it locks the lyrics
+// where they are, letting the pointer through; locked, it shows as the
+// pointer comes near, and unlocks them.
+func (d *desktopLyrics) lock(c *ui.Context, ink ui.Color) {
+	locked := d.a.settings.DesktopLocked
+	label := "锁定桌面歌词"
+	if locked {
+		label = "解锁桌面歌词"
 	}
-	ui.RichText(c.Key("line")).FontSize(size).FontWeight(800).LetterSpacing(-0.4).SingleLine().Children(func() {
-		for wi, w := range l.Words {
-			lit := clamp01(float32((pos - w.Start).Seconds() / max(0.05, (w.End-w.Start).Seconds())))
-			ui.Text(c.Key(wi), w.Text).TextColor(ui.RGBA(255, 255, 255, 0.45+0.55*lit))
-		}
+	b := ui.ButtonBase(c.Key("lock")).Absolute().Top(3).Right(3).
+		Size(deskLockSize, deskLockSize).Radius(deskLockSize / 2).Center().
+		FocusRing(false).Label(label).Tooltip(label)
+	fill := ui.RGBA(255, 255, 255, 0.1)
+	if b.Hovered() {
+		fill = ui.RGBA(255, 255, 255, 0.22)
+	}
+	b.Background(b.AnimateColor("bg", fill, ui.Animation{Duration: 120 * time.Millisecond}))
+	// Locked, out of reach of the pointer, the lock stays out of sight,
+	// with the lyrics it would unlock.
+	shown := float32(1)
+	if locked && !d.near {
+		shown = 0
+	}
+	b.Opacity(b.AnimateTo("shown", shown, ui.Animation{Duration: 130 * time.Millisecond}))
+	b.Children(func() {
+		ui.Icon(c, iconLock).Size(11, 11).TextColor(ink.Alpha(0.85))
 	})
+	if b.Clicked() {
+		d.a.lockDesktopLyrics(!locked)
+	}
+	d.lockRect = b.Bounds()
 }
 
-// fit returns the size to set text in, shrunk until it fits the window.
+// plain sets a line that is not sung, shrunk to fit the card.
+func (d *desktopLyrics) plain(c *ui.Context, ink ui.Color, text string, size, alpha float32) {
+	ui.Text(c, text).FontSize(d.fit(c, text, size, 600)).FontWeight(600).
+		TextColor(ink.Alpha(alpha)).SingleLine()
+}
+
+// lyric sets a line of the lyrics, each of its words lit as far as it is
+// sung: in the middle while it fits the card, and when it does not, standing
+// still while its first third is sung, then moved along to its tail, which
+// shows whole for the last third. It reports whether the line moves.
+func (d *desktopLyrics) lyric(c *ui.Context, ink ui.Color, size float32, l *lyrics.Line, pos time.Duration, dim float32) bool {
+	// Each word stands on its own, with how lit it is: the line is moved as
+	// a whole.
+	var spans []ui.Span
+	var alphas []float32
+	if len(l.Words) == 0 {
+		// Without words to light, the line is set a letter at a time.
+		for _, r := range l.Text {
+			spans = append(spans, ui.Span{Text: string(r), Size: size, Weight: 800, LetterSpacing: -0.4})
+			alphas = append(alphas, dim)
+		}
+	}
+	for _, w := range l.Words {
+		lit := clamp01(float32((pos - w.Start).Seconds() / max(0.05, (w.End-w.Start).Seconds())))
+		spans = append(spans, ui.Span{Text: w.Text, Size: size, Weight: 800, LetterSpacing: -0.4})
+		alphas = append(alphas, dim+(1-dim)*lit)
+	}
+
+	room := float32(d.width()) - 2*deskPadX(d.width())
+	width, _ := c.MeasureText(0, spans...)
+	shift, moving := deskScroll(width, room, deskProgress(l, pos))
+	draw := func() {
+		t := ui.RichText(c.Key("line")).FontSize(size).FontWeight(800).LetterSpacing(-0.4)
+		if moving {
+			// A line that does not fit is kept whole, and moved, rather
+			// than cut short.
+			t = t.NoWrap().Translate(shift, 0)
+		} else {
+			t = t.SingleLine()
+		}
+		t.Children(func() {
+			for i, s := range spans {
+				ui.Text(c.Key(i), s.Text).TextColor(ink.Alpha(alphas[i]))
+			}
+		})
+	}
+	if !moving {
+		draw()
+		return false
+	}
+	ui.Box(c.Key("scroll")).FillWidth().ClipX().Children(draw)
+	return true
+}
+
+// fit returns the size to set text in, shrunk until it fits the card.
 func (d *desktopLyrics) fit(c *ui.Context, text string, size float32, weight int) float32 {
-	maxW := float32(d.w - 2*deskLyricsPadX - 8)
+	maxW := float32(d.width()) - 2*deskPadX(d.width()) - 8
 	if text == "" || maxW <= 0 {
 		return size
 	}
 	if m, _ := c.MeasureText(0, ui.Span{Text: text, Size: size, Weight: weight}); m > maxW {
-		return max(14, size*maxW/m)
+		return max(12, size*maxW/m)
 	}
 	return size
 }
