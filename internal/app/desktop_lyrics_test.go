@@ -178,6 +178,69 @@ func TestDesktopLyricsScrollProgress(t *testing.T) {
 	}
 }
 
+// The lyrics may be put at the very foot of the screen, over the Dock: a
+// card the listener dragged there stays there, and only one that leaves the
+// display comes back onto it.
+func TestDesktopLyricsSitAtTheFoot(t *testing.T) {
+	screen := mygo.Rectangle{X: 0, Y: 0, Width: 1440, Height: 900}
+	foot := mygo.Rectangle{X: 560, Y: 900 - deskHDefault, Width: deskWDefault, Height: deskHDefault}
+	if got := deskFit(foot, screen); got != foot {
+		t.Errorf("a card at the foot moved to %v, want %v", got, foot)
+	}
+	past := mygo.Rectangle{X: 560, Y: 880, Width: deskWDefault, Height: deskHDefault}
+	if got := deskFit(past, screen); got.Y != 900-deskHDefault {
+		t.Errorf("a card past the foot is at %d, want %d", got.Y, 900-deskHDefault)
+	}
+	left := mygo.Rectangle{X: -100, Y: 0, Width: deskWMin, Height: deskHMin}
+	if got := deskFit(left, screen); got.X != 0 {
+		t.Errorf("a card past the left edge is at %d, want 0", got.X)
+	}
+}
+
+// Dragged, the lyrics go where the pointer goes, by its own travel: a card
+// taken to the foot of the screen stays there, over the Dock's strip, where
+// the window server would keep it above the Dock.
+func TestDesktopLyricsDragToTheFoot(t *testing.T) {
+	screen := mygo.Rectangle{X: 0, Y: 0, Width: 1440, Height: 900}
+	from := mygo.Rectangle{X: 340, Y: 400, Width: deskWDefault, Height: deskHDefault}
+	press := mygo.Point{X: 720, Y: 430}
+
+	// The pointer goes down the screen by as much as the card has to.
+	at := mygo.Point{X: 720, Y: 880}
+	got := deskFit(deskDrag(from, press, at), screen)
+	if want := 900 - deskHDefault; got.Y != want {
+		t.Errorf("at the foot the card is at %d, want %d", got.Y, want)
+	}
+	if got.X != from.X {
+		t.Errorf("the card went aside to %d, want %d", got.X, from.X)
+	}
+	// Past the foot, it is kept at the foot rather than lost.
+	past := mygo.Point{X: 900, Y: 1000}
+	if got := deskFit(deskDrag(from, press, past), screen); got.Y != 900-deskHDefault {
+		t.Errorf("past the foot the card is at %d, want %d", got.Y, 900-deskHDefault)
+	}
+}
+
+// A press on the lock is the button's, not the card's: the lyrics are
+// dragged from elsewhere, and the lock still unlocks them.
+func TestDesktopLyricsDragLeavesTheLock(t *testing.T) {
+	d := &desktopLyrics{lockRect: ui.Rect{X: 700, Y: 3, W: deskLockSize, H: deskLockSize}}
+	for _, c := range []struct {
+		name string
+		x, y float32
+		want bool
+	}{
+		{"on it", 711, 14, true},
+		{"at its edge", 698, 20, true},
+		{"beside it", 650, 20, false},
+		{"below it", 711, 60, false},
+	} {
+		if got := d.onLock(c.x, c.y); got != c.want {
+			t.Errorf("%s at (%v, %v): %v", c.name, c.x, c.y, got)
+		}
+	}
+}
+
 // The lyrics start at the bottom middle of the work area, above the Dock.
 func TestDesktopLyricsSpot(t *testing.T) {
 	h := deskHDefault

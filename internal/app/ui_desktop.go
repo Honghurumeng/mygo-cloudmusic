@@ -31,6 +31,11 @@ type desktopLyrics struct {
 	// saveGen counts the places the lyrics were dragged to, to keep the
 	// last once the drag settles.
 	saveGen int
+	// dragging says the pointer has the lyrics, which follow it; dragFrom
+	// is where they stood when it took them, and dragAt where it was.
+	dragging bool
+	dragFrom mygo.Rectangle
+	dragAt   mygo.Point
 }
 
 const (
@@ -65,6 +70,10 @@ const (
 	// deskScrollGap is how often a line too long for the card is drawn
 	// again as it moves along.
 	deskScrollGap = 16 * time.Millisecond
+	// deskDragGap is how often the lyrics look where the pointer has taken
+	// them: they follow it as it goes, the window's own moves telling the
+	// app nothing of a pointer that stays still against it.
+	deskDragGap = 16 * time.Millisecond
 	// deskHeadHold and deskTailHold are the shares of a moving line that it
 	// stands still at its head, and at its tail: the line is sung a third
 	// of the way before it starts to go, and it comes to its end a third
@@ -102,8 +111,17 @@ func newDesktopLyrics(a *app) *desktopLyrics {
 		}
 	})
 	d.win.SetIgnoreMouseEvents(a.settings.DesktopLocked)
+	// Without its hidden title bar, the window may lie at the very foot of
+	// the screen, where the listener may put it, and over the Dock there,
+	// which would hide it whole.
+	makeBorderless(d.win.NativeHandle())
+	raiseAboveDock(d.win.NativeHandle())
 	if a.settings.DesktopLyrics {
 		d.win.ShowInactive()
+		// A window opens where it was asked to, or above the Dock if the
+		// system keeps it off the Dock's strip: the lyrics are put where
+		// the listener left them, the foot of the screen too.
+		d.place()
 	}
 	mygo.Screen.OnDisplaysChanged(func() { d.place() })
 	return d
@@ -264,18 +282,36 @@ func (d *desktopLyrics) place() {
 		return
 	}
 	x, y := d.start()
-	d.win.SetBounds(withinDisplay(mygo.Rectangle{X: x, Y: y, Width: d.width(), Height: d.height()}))
+	r := withinDisplay(mygo.Rectangle{X: x, Y: y, Width: d.width(), Height: d.height()})
+	d.move(r)
 }
 
-// withinDisplay moves r as little as it may to lie on its display's work
-// area.
+// move puts the lyrics at r: the size through MyGo, and then the place
+// through the window itself, which AppKit keeps above the Dock's strip
+// otherwise, however near the foot of the screen they are put.
+func (d *desktopLyrics) move(r mygo.Rectangle) {
+	if d.win == nil {
+		return
+	}
+	d.win.SetBounds(r)
+	moveWindowTo(d.win.NativeHandle(), r.X, r.Y, r.Width, r.Height)
+}
+
+// withinDisplay moves r as little as it may to lie on its display, the
+// Dock and the menu bar too: the lyrics may sit at the very foot of the
+// screen, where a window the listener put them has to stay.
 func withinDisplay(r mygo.Rectangle) mygo.Rectangle {
-	work := mygo.Screen.DisplayMatching(r).WorkArea
-	if work.Width <= 0 || work.Height <= 0 {
+	b := mygo.Screen.DisplayMatching(r).Bounds
+	if b.Width <= 0 || b.Height <= 0 {
 		return r
 	}
-	r.X = min(max(r.X, work.X), work.X+work.Width-r.Width)
-	r.Y = min(max(r.Y, work.Y), work.Y+work.Height-r.Height)
+	return deskFit(r, b)
+}
+
+// deskFit moves r as little as it may to lie on area.
+func deskFit(r, area mygo.Rectangle) mygo.Rectangle {
+	r.X = min(max(r.X, area.X), area.X+area.Width-r.Width)
+	r.Y = min(max(r.Y, area.Y), area.Y+area.Height-r.Height)
 	return r
 }
 
@@ -347,7 +383,7 @@ func (d *desktopLyrics) resize() {
 	r.Width, r.Height = w, h
 	// A card grown past the edge of the display comes back onto it.
 	r = withinDisplay(r)
-	d.win.SetBounds(r)
+	d.move(r)
 	s := &d.a.settings
 	s.DesktopX, s.DesktopY, s.DesktopPlaced = r.X, r.Y, true
 }
@@ -383,6 +419,67 @@ func (d *desktopLyrics) moved() {
 			}
 		})
 	})
+}
+
+// drag moves the lyrics with the pointer. MyGo's own drag asks the window
+// server, which keeps a window's frame within the screen's visible frame:
+// its foot may not go below the Dock, however far it is dragged. The
+// lyrics are moved here instead, by the pointer's own travel, so that they
+// go where the listener puts them: the very foot of the screen too.
+func (d *desktopLyrics) drag(ev ui.InputEvent) bool {
+	if d.win == nil || d.a.settings.DesktopLocked {
+		return false
+	}
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		if ev.Button != 0 || d.onLock(ev.X, ev.Y) {
+			return false
+		}
+		d.dragging = true
+		d.dragFrom = d.win.Bounds()
+		d.dragAt = mygo.Screen.CursorScreenPoint()
+		return true
+	case ui.InputPointerMove:
+		if !d.dragging || ev.Button != 0 {
+			return false
+		}
+		d.follow()
+		return true
+	case ui.InputPointerUp:
+		if !d.dragging {
+			return false
+		}
+		d.dragging = false
+		d.moved()
+		return true
+	}
+	return false
+}
+
+// follow puts the lyrics where the pointer has taken them.
+func (d *desktopLyrics) follow() {
+	if d.win == nil {
+		return
+	}
+	d.move(withinDisplay(deskDrag(d.dragFrom, d.dragAt, mygo.Screen.CursorScreenPoint())))
+}
+
+// deskDrag returns where the lyrics stand once the pointer has gone from
+// press to at, having taken them at from.
+func deskDrag(from mygo.Rectangle, press, at mygo.Point) mygo.Rectangle {
+	from.X += at.X - press.X
+	from.Y += at.Y - press.Y
+	return from
+}
+
+// onLock reports whether the pointer at x, y, in the card, is on the lock,
+// or near enough: a press there belongs to the button, not to the drag.
+func (d *desktopLyrics) onLock(x, y float32) bool {
+	r := d.lockRect
+	if r.W <= 0 {
+		return false
+	}
+	return x >= r.X-2 && x <= r.X+r.W+2 && y >= r.Y-2 && y <= r.Y+r.H+2
 }
 
 // desktopShown returns the line the lyrics show at pos, what goes under
@@ -449,6 +546,12 @@ func (d *desktopLyrics) watch(c *ui.Context) {
 	if d.win == nil {
 		return
 	}
+	if d.dragging {
+		// The pointer may go on while the window's own moves tell the app
+		// nothing of it: it is read where it is, every frame.
+		d.follow()
+		c.After(deskDragGap)
+	}
 	if !d.a.settings.DesktopLocked {
 		d.moved()
 		c.After(400 * time.Millisecond)
@@ -505,8 +608,9 @@ func (d *desktopLyrics) card(c *ui.Context, tr *netease.Track, lines []lyrics.Li
 		Background(ui.RGBA(0, 0, 0, alpha)).
 		Border(0.5, ui.RGBA(255, 255, 255, 0.16*alpha))
 	if !s.DesktopLocked {
-		// Anywhere on the lyrics, but not on the lock.
-		card.DragWindow()
+		// Anywhere on the lyrics, but not on the lock, which is a button
+		// of its own.
+		card.HandleInput(d.drag)
 	}
 	card.Children(func() {
 		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Gap(deskGap(d.height())).
