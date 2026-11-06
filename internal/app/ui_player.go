@@ -309,37 +309,51 @@ func (a *app) volumeSlider(c *ui.Context, color, track ui.Color, width float32) 
 	})
 }
 
-// transport is the row of controls: shuffle, previous, play, next, repeat.
-func (a *app) transport(c *ui.Context, color, dim, on ui.Color, size float32) {
+// transport is the row of controls: the play mode, one button that cycles
+// through the list looping, this song looping and the list shuffled; then
+// previous, play and next; and where the song comes from.
+func (a *app) transport(c *ui.Context, color ui.Color, size float32) {
 	pl := a.pl
-	ui.Row(c).Gap(size * 0.5).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		shuffle := dim
-		if pl.Shuffle() {
-			shuffle = on
+	// The mode is not one of the three that move the song, yet it is the
+	// only thing saying what plays next: its button is as big as theirs,
+	// so that the loop and the one inside it can be told apart at the
+	// bar's size.
+	const modeScale = 0.85
+	ui.Row(c).Gap(size * 0.62).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		icon, name := modeMark(pl.Mode())
+		mode := iconButton(c.Key("mode"), icon, size*modeScale, color, "播放模式："+name)
+		mode.Tooltip("播放模式：" + name + "，点击切换")
+		// The mark at the right is wider than this button: room left of
+		// it keeps the play button under the middle of the row.
+		mode.Margin(0, 0, 0, size*(markScale-modeScale))
+		if mode.Clicked() {
+			pl.CycleMode()
 		}
-		if iconButton(c.Key("shuffle"), iconShuffle, size*0.62, shuffle, "随机播放").Clicked() {
-			pl.ToggleShuffle()
-		}
-		if iconButton(c.Key("prev"), iconPrev, size*0.85, color, "上一首").Clicked() {
-			pl.Prev()
-		}
-		if playButton(c.Key("play"), pl.Playing(), size*1.25, color).Clicked() {
-			pl.TogglePlay()
-		}
-		if iconButton(c.Key("next"), iconNext, size*0.85, color, "下一首").Clicked() {
-			pl.Next()
-		}
-		repeat, ricon := dim, iconRepeat
-		switch pl.Repeat() {
-		case player.RepeatAll:
-			repeat = on
-		case player.RepeatOne:
-			repeat, ricon = on, iconRepeat1
-		}
-		if iconButton(c.Key("repeat"), ricon, size*0.62, repeat, "循环").Clicked() {
-			pl.CycleRepeat()
-		}
+		ui.Row(c).Gap(size * 0.5).AlignItems(ui.Center).Children(func() {
+			if iconButton(c.Key("prev"), iconPrev, size*0.85, color, "上一首").Clicked() {
+				pl.Prev()
+			}
+			if playButton(c.Key("play"), pl.Playing(), size*1.25, color).Clicked() {
+				pl.TogglePlay()
+			}
+			if iconButton(c.Key("next"), iconNext, size*0.85, color, "下一首").Clicked() {
+				pl.Next()
+			}
+		})
+		a.sourceBadge(c, size)
 	})
+}
+
+// modeMark is what the play mode's button shows: its icon, and the words
+// that name it.
+func modeMark(mode player.PlayMode) (*ui.SVG, string) {
+	switch mode {
+	case player.ModeShuffle:
+		return iconShuffle, "随机播放"
+	case player.ModeRepeatOne:
+		return iconRepeat1, "单曲循环"
+	}
+	return iconRepeat, "列表循环"
 }
 
 // playerBar runs along the foot of the content: what plays, its controls
@@ -414,7 +428,7 @@ func (a *app) playerBar(c *ui.Context) {
 
 		// Controls over the progress.
 		ui.Column(c).Width(440).Shrink(1).MinWidth(300).Gap(0).AlignItems(ui.Stretch).Children(func() {
-			a.transport(c, p.text, p.muted, p.accent, 18)
+			a.transport(c, p.text, 18)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Margin(-4, 0, 0, 0).Children(func() {
 				ui.Text(c, clock(pl.Position())).FontSize(10.5).FontFeatures("tnum").TextColor(p.faint).Width(34).TextAlign(ui.End)
 				a.scrubber(c.Key("bar-scrub"), &a.barScrub, p.press, p.text.Alpha(0.75), 14, p.accent).Grow(1)

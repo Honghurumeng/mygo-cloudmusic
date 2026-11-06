@@ -330,10 +330,11 @@ func streamOf(res *response, level string) (*netease.Stream, error) {
 		return nil, errMissing
 	}
 	s := &netease.Stream{
-		URL:   u,
-		Size:  res.Data.Size,
-		Type:  typeOf(u),
-		Level: level,
+		URL:    u,
+		Size:   res.Data.Size,
+		Type:   typeOf(u),
+		Level:  level,
+		Source: netease.SourceChKSz,
 	}
 	// It says the level it served, which may be below the one asked for;
 	// one the app doesn't know is taken for the one asked for, as the

@@ -16,9 +16,25 @@ import (
 type RepeatMode int
 
 const (
+	// RepeatOff is no longer a mode of its own: a list goes round rather
+	// than stopping at its end. It is what a player starts as, and what
+	// a session saved before there was one mode may hold; it plays as
+	// RepeatAll does.
 	RepeatOff RepeatMode = iota
 	RepeatAll
 	RepeatOne
+)
+
+// PlayMode is what the transport's one button shows, and what plays when
+// a song ends: the list looping in its order, this song looping, or the
+// list shuffled, which loops too. A list cannot both shuffle and repeat
+// one song, so there is no fourth state.
+type PlayMode int
+
+const (
+	ModeRepeatAll PlayMode = iota
+	ModeRepeatOne
+	ModeShuffle
 )
 
 // StopError is why playback cannot go on: the service the songs come from
@@ -155,11 +171,7 @@ func (p *Player) ended() {
 		p.awaitFeed()
 		return
 	}
-	if p.at+1 >= len(p.order) && p.repeat == RepeatOff {
-		p.playing = false
-		p.sync()
-		return
-	}
+	// The one button offers no play-once mode, so the list goes round.
 	p.Next()
 }
 
@@ -328,24 +340,82 @@ func (p *Player) shuffleOrder(first int) {
 	}
 }
 
-func (p *Player) ToggleShuffle() {
-	p.shuffle = !p.shuffle
+// SetShuffle turns the queue shuffled or back, keeping the track playing
+// where it is. Shuffling a song that repeats alone would say two things at
+// once, so it lets go of the single repeat: the one button has one mode.
+func (p *Player) SetShuffle(on bool) {
+	if on {
+		p.repeat = RepeatAll
+	}
+	p.reorder(on)
+}
+
+func (p *Player) ToggleShuffle() { p.SetShuffle(!p.shuffle) }
+
+// reorder puts the queue in play order, shuffled or as it was given, with
+// the track playing still the one playing.
+func (p *Player) reorder(shuffle bool) {
+	p.shuffle = shuffle
 	if len(p.order) == 0 {
 		return
 	}
-	cur := p.order[max(p.at, 0)]
-	if p.shuffle {
-		p.shuffleOrder(cur)
-		p.at = 0
-	} else {
+	if p.at < 0 {
+		// Nothing plays, so nothing to keep: only the order changes.
+		if shuffle {
+			rand.Shuffle(len(p.order), func(i, j int) { p.order[i], p.order[j] = p.order[j], p.order[i] })
+			return
+		}
 		for i := range p.order {
 			p.order[i] = i
 		}
-		p.at = cur
+		return
+	}
+	cur := p.order[p.at]
+	if shuffle {
+		p.shuffleOrder(cur)
+		p.at = 0
+		return
+	}
+	for i := range p.order {
+		p.order[i] = i
+	}
+	p.at = cur
+}
+
+// Mode returns what the one button shows.
+func (p *Player) Mode() PlayMode {
+	switch {
+	case p.shuffle:
+		return ModeShuffle
+	case p.repeat == RepeatOne:
+		return ModeRepeatOne
+	}
+	return ModeRepeatAll
+}
+
+// SetMode makes mode what plays when a song ends. Setting the mode it is
+// already in changes nothing: choosing "随机播放" again does not reshuffle
+// what is queued.
+func (p *Player) SetMode(mode PlayMode) {
+	if mode == p.Mode() {
+		return
+	}
+	switch mode {
+	case ModeShuffle:
+		p.repeat = RepeatAll
+		p.reorder(true)
+	case ModeRepeatOne:
+		p.reorder(false)
+		p.repeat = RepeatOne
+	default:
+		p.reorder(false)
+		p.repeat = RepeatAll
 	}
 }
 
-func (p *Player) CycleRepeat() { p.repeat = (p.repeat + 1) % 3 }
+// CycleMode goes on to the next of the three: the list looping, this song
+// looping, then the list shuffled, and round again.
+func (p *Player) CycleMode() { p.SetMode((p.Mode() + 1) % 3) }
 
 // Current returns the track playing or loading, or nil.
 func (p *Player) Current() *netease.Track { return p.track }
@@ -368,8 +438,7 @@ func (p *Player) Err() string { return p.err }
 // Stream returns what the current track streams, once loaded, or nil.
 func (p *Player) Stream() *netease.Stream { return p.info }
 
-func (p *Player) Shuffle() bool      { return p.shuffle }
-func (p *Player) Repeat() RepeatMode { return p.repeat }
+func (p *Player) Shuffle() bool { return p.shuffle }
 
 // Lyrics returns the current track's lyrics, and whether they have loaded.
 func (p *Player) Lyrics() ([]lyrics.Line, bool) { return p.lyrics, p.lyricsLoaded }
@@ -798,5 +867,10 @@ func (p *Player) Restore(s Session) {
 	}
 	p.queue, p.order = s.Queue, s.Order
 	p.shuffle, p.repeat = s.Shuffle, s.Repeat%3
+	if p.shuffle {
+		// A session saved when shuffle and single repeat could both be
+		// on comes back as the one mode it can be: shuffled.
+		p.repeat = RepeatAll
+	}
 	p.loadSkipping(s.At, 0, false, time.Duration(s.Position)*time.Millisecond, false)
 }

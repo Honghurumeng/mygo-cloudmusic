@@ -4,6 +4,8 @@ import (
 	"runtime"
 
 	"github.com/egoist/mygo"
+
+	"netease-music-mygo/internal/player"
 )
 
 // setMenu gives the app its menu bar, in Chinese and named as the app
@@ -61,8 +63,11 @@ func (a *app) setMenu() {
 			mygo.Separator(),
 			{Label: "喜欢/取消喜欢", Accelerator: "CmdOrCtrl+D", Click: run(a.likeCurrent)},
 			mygo.Separator(),
-			{Label: "随机播放", Click: run(func() { a.pl.ToggleShuffle() })},
-			{Label: "切换循环模式", Click: run(func() { a.pl.CycleRepeat() })},
+			{Label: "播放模式", Submenu: []*mygo.MenuItem{
+				{Label: "列表循环", Click: run(func() { a.pl.SetMode(player.ModeRepeatAll) })},
+				{Label: "单曲循环", Click: run(func() { a.pl.SetMode(player.ModeRepeatOne) })},
+				{Label: "随机播放", Click: run(func() { a.pl.SetMode(player.ModeShuffle) })},
+			}},
 			mygo.Separator(),
 			{Label: "正在播放", Accelerator: "CmdOrCtrl+L", Click: run(func() {
 				a.showMain()

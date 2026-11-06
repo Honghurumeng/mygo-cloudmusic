@@ -387,6 +387,13 @@ func ArtistLatestSongs(id int64, limit int) ([]Track, error) {
 
 var ErrUnavailable = errors.New("this song isn't available to stream")
 
+// The services a stream comes from: NetEase, and the one that serves its
+// songs without a session.
+const (
+	SourceNetEase = "netease"
+	SourceChKSz   = "chksz"
+)
+
 // Stream is where a track streams from, and what it is.
 type Stream struct {
 	URL  string `json:"-"`
@@ -395,6 +402,10 @@ type Stream struct {
 	Type string `json:"type"`
 	// Level is the level served, which may be below the one asked for.
 	Level string `json:"level"`
+	// Source names the service it came from, one of the sources above: the
+	// cache keeps it with the song, so that it plays again saying where it
+	// came from.
+	Source string `json:"source,omitempty"`
 	// Gain is how many dB to change the track by to sound as loud as
 	// others, and Peak its loudest sample, 1 at full scale, or 0 if
 	// unknown.
@@ -451,6 +462,7 @@ func SongURL(id int64, level string) (*Stream, error) {
 		s.Level = level
 	}
 	s.URL = strings.Replace(d.URL, "http://", "https://", 1)
+	s.Source = SourceNetEase
 	return &s, nil
 }
 
