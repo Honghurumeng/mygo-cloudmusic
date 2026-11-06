@@ -5,3 +5,5 @@ mygo_windows_*.syso
 /node_modules/
 build-cross
 api.chksz.key
+
+.DS_Store
