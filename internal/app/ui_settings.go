@@ -44,6 +44,7 @@ func (a *app) openSettings() {
 
 // changed applies the settings everywhere and keeps them.
 func (a *app) changed() {
+	a.applyDesktop()
 	a.settings.save()
 	a.settings.applyAppearance()
 	a.chksz = newChKSz(a.settings)
@@ -262,6 +263,19 @@ func (a *app) playbackSettings(c *ui.Context, s *settings, group settingsGroup, 
 			if ui.Switch(c.Key("normalize"), &s.Normalize).Label("音量均衡").Changed() {
 				a.pl.SetVolume(a.volume)
 				a.changed()
+			}
+		})
+	})
+	group("歌词", func() {
+		row("桌面歌词", "在桌面最上层显示正在唱的歌词，逐字点亮，浮在所有窗口之上", func() {
+			if ui.Switch(c.Key("desktop-lyrics"), &s.DesktopLyrics).Label("桌面歌词").Changed() {
+				a.changed()
+			}
+		})
+		row("锁定位置", "锁定后点按穿透歌词，落到下面的窗口；关闭后可以拖动歌词调整位置", func() {
+			locked := s.DesktopLocked
+			if ui.Switch(c.Key("desktop-locked"), &locked).Label("锁定位置").Disabled(!s.DesktopLyrics).Changed() {
+				a.lockDesktopLyrics(locked)
 			}
 		})
 	})
