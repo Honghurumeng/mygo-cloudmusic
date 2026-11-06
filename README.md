@@ -2,6 +2,8 @@
 
 用 Go 和 [MyGo](https://github.com/egoist/mygo) 写的第三方网易云音乐桌面客户端，原生界面，无 WebView。
 
+![「为你推荐」页：每日推荐、官方榜单与正在播放条](docs/home-page.png)
+
 ## 功能
 
 - 不必登录也能播放：先按网易云播放，它播放不了的歌曲（VIP 歌曲、下架的歌曲）再由ChKSz音源解析
