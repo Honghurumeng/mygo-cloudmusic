@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -452,8 +453,9 @@ func (a *app) openCacheSongs() {
 	a.redraw()
 }
 
-// cacheSongsView lists the songs the cache keeps, with how much each takes
-// and when it played last: the back button returns to the settings.
+// cacheSongsView lists the songs the cache keeps, with whether each is
+// among the liked songs, how much it takes and when it played last: the
+// back button returns to the settings.
 func (a *app) cacheSongsView(c *ui.Context, p palette) {
 	a.applyCacheActions()
 	ui.Column(c).Fill().Children(func() {
@@ -486,15 +488,22 @@ func (a *app) cacheSongsView(c *ui.Context, p palette) {
 			}
 			return a.cacheSongs[row].ID
 		}
+		// Whether everything that says where a song is kept has answered,
+		// said once for the whole list.
+		settled := a.settled()
 		ui.List(c.Key("cache-songs"), &a.cacheList, len(a.cacheSongs), func(i int) {
-			a.cachedSongRow(c, i, p)
+			a.cachedSongRow(c, i, p, settled)
 		}).Grow(1)
 	})
 }
 
-// cachedSongRow shows a song the cache keeps, and drops it when its trash
-// is clicked.
-func (a *app) cachedSongRow(c *ui.Context, i int, p palette) {
+// cacheKeptWidth is how much room the column saying where a cached song is
+// kept takes, the same down every row.
+const cacheKeptWidth = 64
+
+// cachedSongRow shows a song the cache keeps, where it is kept, and drops
+// it when its trash is clicked.
+func (a *app) cachedSongRow(c *ui.Context, i int, p palette, settled bool) {
 	s := &a.cacheSongs[i]
 	row := ui.Row(c).Height(58).PaddingX(16).Gap(12).AlignItems(ui.Center)
 	bg := ui.Transparent
@@ -516,6 +525,34 @@ func (a *app) cachedSongRow(c *ui.Context, i int, p palette) {
 			}
 			ui.Text(c, artists).FontSize(12).TextColor(p.muted).SingleLine()
 		})
+		// A column of its own says where the song is kept: in the
+		// listener's hearts, or in a playlist they saved or keep here.
+		// Saved playlists say what they hold once opened, and are
+		// counted from then on; one never opened is not spoken for. It
+		// is words, not a heart, which beside a song reads as one to
+		// like it — and this list never likes anything.
+		lists := a.heldBy()[s.ID]
+		status, tone, strength := "", p.faint, false
+		tip := "你的喜欢列表还没返回，暂时不知道它是否被收藏"
+		switch {
+		case a.liked[s.ID]:
+			status, tone, strength = "已喜欢", p.accent, true
+			tip = "在 " + likesName
+			if len(lists) > 0 {
+				tip += "、" + strings.Join(lists, "、")
+			}
+		case len(lists) > 0:
+			status, tone = fmt.Sprintf("%d 个歌单", len(lists)), p.muted
+			tip = "在 " + strings.Join(lists, "、")
+		case settled:
+			status = "未收藏"
+			tip = "不在我喜欢的音乐，也不在打开过的收藏歌单里"
+		}
+		mark := ui.Text(c, status).FontSize(11.5).TextColor(tone).Margin(0, 10, 0, 0).
+			Width(cacheKeptWidth).TextAlign(ui.End).SingleLine().Tooltip(tip)
+		if strength {
+			mark.FontWeight(600)
+		}
 		ui.Column(c).AlignItems(ui.End).Gap(3).Children(func() {
 			ui.Text(c, cachedLevel(s.Level)+" · "+cachedSize(s.Size)).FontSize(11.5).TextColor(p.muted).SingleLine()
 			ui.Text(c, cachedAt(s.Kept)).FontSize(11.5).TextColor(p.faint).SingleLine()

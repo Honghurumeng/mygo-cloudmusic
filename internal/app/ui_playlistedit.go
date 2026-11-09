@@ -90,6 +90,12 @@ func (a *app) toggleSaved(pl netease.Playlist) {
 	}
 	a.savingPl[id] = true
 	save := !a.isSaved(&pl)
+	// Its songs are here while its page is: kept before the sidebar's
+	// copy loses them, so the cache's list knows which of its songs the
+	// playlist has.
+	if save && len(pl.Tracks) > 0 {
+		a.keepSavedSongs(id, pl.Tracks)
+	}
 	at := a.setSaved(pl, save, 0)
 	uid := a.profile.UserID
 	go func() {
@@ -153,6 +159,8 @@ func (a *app) setSaved(pl netease.Playlist, save bool, at int) int {
 		saved = slices.Insert(saved, min(at, len(saved)), pl)
 	}
 	a.saved = saved
+	// What the cache's list says of the saved playlists changed with them.
+	a.heldGen++
 	return was
 }
 
@@ -163,6 +171,9 @@ func (a *app) loadMine(uid int64) {
 		a.post(func() {
 			if err == nil && a.profile != nil && a.profile.UserID == uid {
 				a.mine, a.saved = made, saved
+				// What the cache's list says of the saved playlists
+				// changed with them.
+				a.heldGen++
 			}
 		})
 	}()

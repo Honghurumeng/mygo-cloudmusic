@@ -63,11 +63,16 @@ func (l *localPlaylist) view() netease.Playlist {
 	return pl
 }
 
-// localStore is what playlists.json keeps: the playlists made here, and
-// those saved here.
+// localStore is what playlists.json keeps: the playlists made here, those
+// saved here, and the songs the saved ones are known to hold.
 type localStore struct {
 	Playlists []localPlaylist    `json:"playlists"`
 	Saved     []netease.Playlist `json:"saved"`
+	// Songs are the ids of the songs each saved playlist holds, as they
+	// were when it was saved or last opened. A playlist without an entry
+	// is one whose songs are not known yet, which is not the same as
+	// holding none: an empty list says it holds none.
+	Songs map[int64][]int64 `json:"songs,omitempty"`
 }
 
 func localPlaylistsPath() (string, error) {
@@ -87,7 +92,7 @@ func (a *app) loadLocalPlaylists() {
 	}
 	a.localPath = path
 	st := readLocalStore(path)
-	a.local, a.savedHere = st.Playlists, st.Saved
+	a.local, a.savedHere, a.savedSongs = st.Playlists, st.Saved, st.Songs
 	a.seedLiked()
 }
 
@@ -113,11 +118,13 @@ func readLocalPlaylists(path string) []localPlaylist {
 // where they were loaded from; those never loaded, as in tests, are not
 // saved.
 func (a *app) saveLocalPlaylists() {
+	// What the playlists hold changed with them.
+	a.heldGen++
 	path := a.localPath
 	if path == "" {
 		return
 	}
-	b, err := json.MarshalIndent(localStore{Playlists: a.local, Saved: a.savedHere}, "", "  ")
+	b, err := json.MarshalIndent(localStore{Playlists: a.local, Saved: a.savedHere, Songs: a.savedSongs}, "", "  ")
 	if err != nil {
 		return
 	}
@@ -239,6 +246,11 @@ func (a *app) allSaved() []netease.Playlist {
 // saveHere keeps playlist pl on this computer, the newest first, as the
 // sidebar lists them.
 func (a *app) saveHere(pl netease.Playlist) {
+	// Its songs are here while its page is: kept before the copy loses
+	// them, so the cache's list knows which of its songs the playlist has.
+	if len(pl.Tracks) > 0 {
+		a.keepSavedSongs(pl.ID, pl.Tracks)
+	}
 	pl = savedCopy(pl)
 	if i := a.savedHereIndex(pl.ID); i >= 0 {
 		a.savedHere = slices.Delete(slices.Clone(a.savedHere), i, i+1)
@@ -249,12 +261,87 @@ func (a *app) saveHere(pl netease.Playlist) {
 
 // unsaveHere stops keeping playlist id on this computer.
 func (a *app) unsaveHere(id int64) {
+	a.forgetSavedSongs(id)
 	i := a.savedHereIndex(id)
 	if i < 0 {
 		return
 	}
 	a.savedHere = slices.Delete(slices.Clone(a.savedHere), i, i+1)
 	a.saveLocalPlaylists()
+}
+
+// keepSavedSongs keeps the ids of the songs saved playlist id holds, as
+// they are when it is saved or opened. NetEase lists no playlist's songs
+// but the one asked for, so they are kept as they pass by.
+func (a *app) keepSavedSongs(id int64, tracks []netease.Track) {
+	ids := make([]int64, 0, len(tracks))
+	for _, tr := range tracks {
+		if tr.ID != 0 {
+			ids = append(ids, tr.ID)
+		}
+	}
+	if known, ok := a.savedSongs[id]; ok && slices.Equal(known, ids) {
+		return
+	}
+	if a.savedSongs == nil {
+		a.savedSongs = map[int64][]int64{}
+	}
+	a.savedSongs[id] = ids
+	a.saveLocalPlaylists()
+}
+
+// keepOpenedSongs keeps what a saved playlist holds, as opening it shows:
+// its songs may have changed since they were kept with it.
+func (a *app) keepOpenedSongs(pl *netease.Playlist) {
+	if pl == nil || len(pl.Tracks) == 0 || !a.isSaved(pl) {
+		return
+	}
+	a.keepSavedSongs(pl.ID, pl.Tracks)
+}
+
+// forgetSavedSongs drops what was kept of playlist id, which the listener
+// no longer saved.
+func (a *app) forgetSavedSongs(id int64) {
+	if _, known := a.savedSongs[id]; !known {
+		return
+	}
+	delete(a.savedSongs, id)
+	a.saveLocalPlaylists()
+}
+
+// heldBy lists the playlists keeping each song, by song id: those kept on
+// this computer, the liked songs' own aside (their hearts say it), and
+// those saved whose songs are known. It is built once, and again once a
+// playlist or its songs change.
+func (a *app) heldBy() map[int64][]string {
+	if a.held != nil && a.heldAt == a.heldGen {
+		return a.held
+	}
+	held := map[int64][]string{}
+	for i := range a.local {
+		if a.local[i].Special == 5 {
+			continue
+		}
+		for _, tr := range a.local[i].Tracks {
+			held[tr.ID] = append(held[tr.ID], a.local[i].Name)
+		}
+	}
+	for _, pl := range a.allSaved() {
+		for _, id := range a.savedSongs[pl.ID] {
+			held[id] = append(held[id], pl.Name)
+		}
+	}
+	a.held, a.heldAt = held, a.heldGen
+	return held
+}
+
+// settled reports whether the hearts have answered, which NetEase sends
+// once signed in. Until they have, the cache's list claims nothing of a
+// song it finds nowhere, its being liked still unknown. The songs of saved
+// playlists are known only of those opened since they were saved, so the
+// list's words say that much and no more.
+func (a *app) settled() bool {
+	return a.liked != nil || a.profile == nil
 }
 
 // savedCopy returns pl as the store keeps it: named and covered for the

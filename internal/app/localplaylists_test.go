@@ -4,6 +4,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -531,5 +532,53 @@ func TestLocalPlaylistFrames(t *testing.T) {
 		a.seedLiked()
 		delete(a.playlists, 30)
 		a.show(route{page: pageHome})
+	}
+}
+
+// Saving a playlist keeps the ids of its songs, which outlive the app, so
+// the cache's list knows which of its songs the playlist has; unsaving it
+// forgets them.
+func TestSavedPlaylistKeepsItsSongs(t *testing.T) {
+	a := localTestApp(t)
+	pl := netease.Playlist{ID: 42, Name: "睡前", Tracks: []netease.Track{{ID: 7}, {ID: 8}}}
+	a.toggleSavedHere(pl)
+	if got := a.savedSongs[42]; !slices.Equal(got, []int64{7, 8}) {
+		t.Fatalf("kept %v, want the songs of the playlist", got)
+	}
+	if got := readLocalStore(a.localPath).Songs[42]; !slices.Equal(got, []int64{7, 8}) {
+		t.Errorf("playlists.json keeps %v, want the songs of the playlist", got)
+	}
+
+	a.toggleSavedHere(pl)
+	if _, known := a.savedSongs[42]; known {
+		t.Error("kept the songs of a playlist no longer saved")
+	}
+	if _, known := readLocalStore(a.localPath).Songs[42]; known {
+		t.Error("playlists.json keeps the songs of a playlist no longer saved")
+	}
+}
+
+// The cache's list says a song is in the playlists that keep it: those saved
+// here, whose songs were kept as they were saved, and those kept on this
+// computer. The liked songs' own playlist says nothing of it, their hearts
+// do.
+func TestHeldByPlaylists(t *testing.T) {
+	a := localTestApp(t)
+	a.local = []localPlaylist{
+		{ID: likesLocalID, Name: likesName, Special: 5, Tracks: []netease.Track{{ID: 1}}},
+		{ID: -2, Name: "通勤", Tracks: []netease.Track{{ID: 2}}},
+	}
+	a.saved = []netease.Playlist{{ID: 42, Name: "睡前"}}
+	a.savedSongs = map[int64][]int64{42: {3}}
+
+	held := a.heldBy()
+	if got := held[2]; !slices.Equal(got, []string{"通勤"}) {
+		t.Errorf("song 2 is in %v, want 通勤", got)
+	}
+	if got := held[3]; !slices.Equal(got, []string{"睡前"}) {
+		t.Errorf("song 3 is in %v, want 睡前", got)
+	}
+	if got, listed := held[1]; listed {
+		t.Errorf("the liked songs are listed as a playlist of their own: %v", got)
 	}
 }

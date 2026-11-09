@@ -58,8 +58,19 @@ type app struct {
 	// (localplaylists.go): localPath is where they were read from, and are
 	// saved to. savedHere are the playlists saved on this computer, while
 	// signed out or before signing in.
-	local        []localPlaylist
-	savedHere    []netease.Playlist
+	local     []localPlaylist
+	savedHere []netease.Playlist
+	// savedSongs are the ids of the songs each saved playlist holds, as
+	// they were when it was saved or last opened: the cache's list says
+	// which cached songs are among them without asking NetEase for every
+	// playlist (localplaylists.go).
+	savedSongs map[int64][]int64
+	// held lists the playlists keeping each song, by song id: set beside
+	// the songs the cache lists, built once and again once what it was
+	// built from changes.
+	held         map[int64][]string
+	heldGen      int // bumped when the playlists or their songs change
+	heldAt       int // the generation held was built at
 	localPath    string
 	savingPl     map[int64]bool     // the playlists whose saving or its end is on its way
 	recPlaylists []netease.Playlist // the day's playlists picked for the listener

@@ -52,6 +52,8 @@ func (a *app) signedIn(prof *netease.Profile) {
 	a.restoreSession()
 	a.mine, a.saved, a.recPlaylists, a.liked = nil, nil, nil, nil
 	a.likedPrograms, a.askedPrograms = nil, nil
+	// What the cache's list says of the saved playlists changed with them.
+	a.heldGen++
 	// What the listener may play, and follows, changed: load the pages
 	// again.
 	a.playlists = map[int64]*netease.Playlist{}
