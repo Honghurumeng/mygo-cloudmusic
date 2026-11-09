@@ -11,7 +11,20 @@ import (
 	"netease-music-mygo/internal/player"
 )
 
-const pagePad = 40
+// pagePad is the room a page keeps at its sides, and pageInset the room the
+// pages of rows and cards keep, their scroll bar floating over the content.
+const (
+	pagePad   = 40
+	pageInset = pagePad - 12
+)
+
+// headerPhotoSize is the photo at the head of an artist, album, playlist,
+// podcast or user page, and headerGap the room between it and what the
+// page says beside it.
+const (
+	headerPhotoSize = 212
+	headerGap       = 28
+)
 
 // columns returns how many cards of at least min DIPs fit across the page.
 func (a *app) columns(c *ui.Context, min float32) int {
@@ -254,8 +267,8 @@ func (a *app) playlistPage(c *ui.Context) {
 
 func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 	p := a.pal
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0).Children(func() {
-		ui.Box(c).Size(212, 212).Radius(14).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
+	ui.Row(c).Gap(headerGap).AlignItems(a.headerAlign()).Padding(0, 0, 26, 0).Children(func() {
+		ui.Box(c).Size(headerPhotoSize, headerPhotoSize).Radius(14).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
 			a.coverFill(c, pl.Cover(), 600, 14)
 		})
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
@@ -277,9 +290,7 @@ func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 				meta = append(meta, plays(pl.PlayCount)+" 次播放")
 			}
 			ui.Text(c, strings.Join(meta, " · ")).FontSize(13).TextColor(p.muted)
-			if d := strings.TrimSpace(pl.Description); d != "" {
-				ui.Text(c, strings.ReplaceAll(d, "\n", " ")).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
-			}
+			a.pageBio(c, pl.Description)
 			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
 				if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
 					if a.pl.Shuffle() {
@@ -438,7 +449,7 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 		if row.Clicked() {
 			a.pl.PlaySong(tracks, i)
 		}
-	}).Grow(1).Padding(top+pageGap, pagePad-12, bottom+32, pagePad-12).ScrollbarInsets(top, 0, bottom, 0)
+	}).Grow(1).Padding(top+pageGap, pageInset, bottom+32, pageInset).ScrollbarInsets(top, 0, bottom, 0)
 }
 
 // nowPlayingBars dance in the row of the track playing.

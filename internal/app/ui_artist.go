@@ -317,7 +317,7 @@ func (a *app) artistPage(c *ui.Context) {
 // a tab of a page that lists tracks puts its header in the same place.
 func (a *app) scrollPage(c *ui.Context, content func()) {
 	top, bottom := a.insets(c)
-	ui.Scroll(c.Key(a.route)).TrackScroll(&a.pageScroll).Grow(1).Padding(top+pageGap, pagePad-12, bottom+32, pagePad-12).ScrollbarInsets(top, 0, bottom, 0).Children(func() {
+	ui.Scroll(c.Key(a.route)).TrackScroll(&a.pageScroll).Grow(1).Padding(top+pageGap, pageInset, bottom+32, pageInset).ScrollbarInsets(top, 0, bottom, 0).Children(func() {
 		a.startMark(c)
 		defer a.endMark(c)
 		content()
@@ -329,9 +329,7 @@ func (a *app) empty(c *ui.Context, msg string) {
 	ui.Text(c, msg).FontSize(13).TextColor(a.pal.muted).Padding(40, 0).AlignSelf(ui.Center)
 }
 
-// artistPhotoSize is the width of an artist's round photo on their page.
-const artistPhotoSize = 212
-
+// artistHeader is who an artist is, over the lists their page shows.
 func (a *app) artistHeader(c *ui.Context, d *artistData) {
 	p := a.pal
 	ar := d.profile
@@ -340,13 +338,13 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 	if a.artistTab == artistLatest && d.latest != nil {
 		songs = d.latest
 	}
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 8, 0).Children(func() {
+	ui.Row(c).Gap(headerGap).AlignItems(a.headerAlign()).Padding(0, 0, 8, 0).Children(func() {
 		photo := ar.Avatar
 		if photo == "" {
 			photo = ar.PicURL
 		}
-		ui.Box(c).Size(artistPhotoSize, artistPhotoSize).Radius(artistPhotoSize/2).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
-			a.coverFill(c, photo, 600, artistPhotoSize/2)
+		ui.Box(c).Size(headerPhotoSize, headerPhotoSize).Radius(headerPhotoSize/2).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
+			a.coverFill(c, photo, 600, headerPhotoSize/2)
 		})
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			ui.Text(c, "歌手").FontSize(12).FontWeight(600).TextColor(p.accent)
@@ -362,9 +360,7 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 				meta = append(meta, fmt.Sprintf("%d 张专辑", ar.AlbumSize))
 			}
 			ui.Text(c, strings.Join(meta, " · ")).FontSize(13).TextColor(p.muted)
-			if d := strings.TrimSpace(ar.BriefDesc); d != "" {
-				ui.Text(c, strings.ReplaceAll(d, "\n", " ")).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
-			}
+			a.pageBio(c, ar.BriefDesc)
 			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
 				if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
 					if a.pl.Shuffle() {
@@ -399,9 +395,10 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 
 var artistTabTitles = [...]string{"歌曲", "歌曲", "专辑", "动态"}
 
+// artistHeaderSkeleton is the artist header while it loads.
 func (a *app) artistHeaderSkeleton(c *ui.Context, s shimmer) {
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 8, 0).Children(func() {
-		s.bone(c, artistPhotoSize/2).Size(artistPhotoSize, artistPhotoSize)
+	ui.Row(c).Gap(headerGap).AlignItems(ui.End).Padding(0, 0, 8, 0).Children(func() {
+		s.bone(c, headerPhotoSize/2).Size(headerPhotoSize, headerPhotoSize)
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			s.text(c, 12, 1.3).Width(24)
 			s.text(c, 30, 1.2).WidthPercent(32)

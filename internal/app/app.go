@@ -93,6 +93,9 @@ type app struct {
 	podcasts   map[int64]*podcastData
 	podcastTab *podcastTab // the podcasts tab's lists
 	trackList  ui.ListState
+	// bioOpen says which pages show the whole of their description, by the
+	// page showing it (ui_bio.go).
+	bioOpen map[route]bool
 	// Where the page and the sidebar are scrolled, kept while Now Playing
 	// covers them, unbuilt.
 	pageScroll ui.ScrollState
@@ -224,6 +227,7 @@ func Run() error {
 		podcasts:   map[int64]*podcastData{},
 		podcastTab: &podcastTab{},
 		searches:   map[route]*searchData{},
+		bioOpen:    map[route]bool{},
 		lyricAt:    -1,
 		queueAt:    -1,
 		cacheUsed:  -1,

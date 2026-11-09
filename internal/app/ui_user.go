@@ -131,17 +131,15 @@ func (a *app) userPage(c *ui.Context) {
 	u := d.user
 	own := a.profile != nil && a.profile.UserID == id
 	a.scrollPage(c, func() {
-		ui.Row(c).Gap(28).AlignItems(ui.End).Children(func() {
-			ui.Box(c).Size(artistPhotoSize, artistPhotoSize).Radius(artistPhotoSize/2).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
-				a.coverFill(c, u.AvatarURL, 600, artistPhotoSize/2)
+		ui.Row(c).Gap(headerGap).AlignItems(a.headerAlign()).Children(func() {
+			ui.Box(c).Size(headerPhotoSize, headerPhotoSize).Radius(headerPhotoSize/2).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
+				a.coverFill(c, u.AvatarURL, 600, headerPhotoSize/2)
 			})
 			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 				ui.Text(c, "用户").FontSize(12).FontWeight(600).TextColor(p.accent)
 				ui.Text(c, u.Nickname).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
 				ui.Text(c, fmt.Sprintf("%s 关注 · %s 粉丝", count(u.Follows), count(u.Followeds))).FontSize(13).TextColor(p.muted)
-				if u.Signature != "" {
-					ui.Text(c, u.Signature).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
-				}
+				a.pageBio(c, u.Signature)
 			})
 		})
 		a.section(c, "创建的歌单")
