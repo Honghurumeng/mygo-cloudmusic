@@ -387,6 +387,7 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 	ui.Row(c).AlignItems(ui.Center).Margin(34, 0, 14, 0).Children(func() {
 		ui.Text(c, artistTabTitles[a.artistTab]).FontSize(19).FontWeight(700).LetterSpacing(-0.3)
 		ui.Spacer(c)
+		a.collectArtistButton(c, d)
 		if segmented(c.Key("tab"), &a.artistTab, "热门", "最新", "专辑", "动态") {
 			a.loadArtist(ar.ID)
 		}
@@ -394,6 +395,54 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 }
 
 var artistTabTitles = [...]string{"歌曲", "歌曲", "专辑", "动态"}
+
+// collectArtistButton saves the songs the page lists as a playlist kept on
+// this computer: on the tabs that list songs, once those are there, and
+// not on the albums' or events'.
+func (a *app) collectArtistButton(c *ui.Context, d *artistData) {
+	if d.profile == nil || a.artistTab == artistAlbums || a.artistTab == artistEvents {
+		return
+	}
+	songs := d.profile.Songs
+	if a.artistTab == artistLatest {
+		if d.latest == nil {
+			return
+		}
+		songs = d.latest
+	}
+	if len(songs) == 0 {
+		return
+	}
+	p := a.pal
+	b := ui.ButtonBase(c.Key("collect")).Height(24).PaddingX(8).Gap(6).Radius(6).Margin(0, 12, 0, 0).
+		AlignItems(ui.Center).FocusRing(false).Label("收藏为本地歌单")
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Children(func() {
+		ui.Icon(c, iconPlus).Size(13, 13).TextColor(p.muted)
+		ui.Text(c, "收藏为本地歌单").FontSize(12.5).FontWeight(500).TextColor(p.muted).SingleLine()
+	})
+	if b.Clicked() {
+		a.collectArtistSongs(d.profile.ID, d.profile.Name, songs)
+	}
+}
+
+// collectArtistSongs keeps the songs an artist's page lists on this
+// computer, in a playlist named after them: the one collecting their songs
+// already, if it is there, takes only those it doesn't have, on top. A
+// toast says what it did.
+func (a *app) collectArtistSongs(artist int64, name string, songs []netease.Track) {
+	added, made := a.collectSongs(artist, name, songs)
+	switch {
+	case made:
+		a.toast = "已收藏为本地歌单"
+	case added > 0:
+		a.toast = fmt.Sprintf("已添加 %d 首到本地歌单", added)
+	default:
+		a.toast = "这些歌已在本地歌单中"
+	}
+}
 
 // artistHeaderSkeleton is the artist header while it loads.
 func (a *app) artistHeaderSkeleton(c *ui.Context, s shimmer) {

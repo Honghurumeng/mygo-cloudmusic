@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -108,4 +109,71 @@ func TestArtistSongsByLatest(t *testing.T) {
 	if len(asked) > 0 {
 		t.Error("the newest songs were asked for again")
 	}
+}
+
+// 收藏为本地歌单 keeps the songs an artist's page lists in a playlist on
+// this computer, named after them, and the songs listed later join it once
+// each, above those it has.
+func TestCollectArtistSongs(t *testing.T) {
+	a := localTestApp(t)
+	song := func(id int64, name string) netease.Track {
+		return netease.Track{ID: id, Name: name, Artists: []netease.Artist{{ID: 12, Name: "乙"}}, Duration: 200000}
+	}
+	a.artists[12] = &artistData{
+		profile: &netease.ArtistProfile{Artist: netease.Artist{ID: 12, Name: "乙"}, Songs: []netease.Track{song(1, "老歌"), song(2, "新歌")}},
+		latest:  []netease.Track{song(2, "新歌"), song(3, "更新的歌")},
+	}
+	a.open(route{page: pageArtist, id: 12})
+	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+
+	if err := tt.Click("收藏为本地歌单"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.local) != 1 || a.local[0].Name != "乙" || a.local[0].Artist != 12 {
+		t.Fatalf("the playlists kept are %+v, want one of 乙's songs", a.local)
+	}
+	if got := trackIDs(a.local[0].Tracks); !slices.Equal(got, []int64{1, 2}) {
+		t.Errorf("the playlist holds %v, want the songs the page lists", got)
+	}
+	if kept := readLocalPlaylists(a.localPath); len(kept) != 1 || len(kept[0].Tracks) != 2 {
+		t.Errorf("playlists.json holds %+v, want the songs kept", kept)
+	}
+
+	// Renamed, it is still the playlist collecting 乙's songs: clicked
+	// again, it takes no song twice, nor makes another one.
+	a.setPlaylistName(a.local[0].ID, "乙的精选")
+	if err := tt.Click("收藏为本地歌单"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.local) != 1 || a.local[0].Name != "乙的精选" || len(a.local[0].Tracks) != 2 {
+		t.Fatalf("the playlists kept are %+v, want the one renamed, unchanged", a.local)
+	}
+
+	// 最新 lists other songs, which join the same playlist, on top.
+	if err := tt.Click("最新"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("收藏为本地歌单"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.local) != 1 {
+		t.Fatalf("the playlists kept are %+v, want the one", a.local)
+	}
+	if got := trackIDs(a.local[0].Tracks); !slices.Equal(got, []int64{3, 1, 2}) {
+		t.Errorf("the playlist holds %v, want the song new to it first", got)
+	}
+}
+
+// trackIDs names the songs of tracks, in order.
+func trackIDs(tracks []netease.Track) []int64 {
+	ids := make([]int64, len(tracks))
+	for i := range tracks {
+		ids[i] = tracks[i].ID
+	}
+	return ids
 }

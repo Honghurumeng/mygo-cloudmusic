@@ -24,6 +24,10 @@ type localPlaylist struct {
 	ID     int64           `json:"id"`
 	Name   string          `json:"name"`
 	Tracks []netease.Track `json:"tracks"`
+	// Artist is the artist whose songs the playlist collects, if it was
+	// made for them: their page adds the songs it lists to it rather than
+	// making another, whatever it has been renamed to.
+	Artist int64 `json:"artist,omitempty"`
 	// Special is 5 for the songs the listener likes here, as NetEase marks
 	// their liked songs' playlist: it is their hearts', not a list they
 	// name, fill and delete.
@@ -271,6 +275,42 @@ func (a *app) newLocalPlaylist(name string, tr *netease.Track) {
 	a.local = slices.Insert(a.local, 0, l)
 	a.saveLocalPlaylists()
 	a.open(route{page: pagePlaylist, id: l.ID})
+}
+
+// collectSongs keeps songs on this computer as a playlist named name, one
+// of an artist's: the playlist already collecting their songs, if there is
+// one, which takes the songs it doesn't have yet on top, as a song added to
+// a local playlist does. It reports how many songs it added and whether it
+// made the playlist.
+func (a *app) collectSongs(artist int64, name string, songs []netease.Track) (added int, made bool) {
+	i := -1
+	if artist != 0 {
+		i = slices.IndexFunc(a.local, func(l localPlaylist) bool { return l.Artist == artist })
+	}
+	if i < 0 {
+		a.local = slices.Insert(a.local, 0, localPlaylist{ID: a.nextLocalID(), Name: name, Artist: artist})
+		i, made = 0, true
+	}
+	l := &a.local[i]
+	have := make(map[int64]bool, len(l.Tracks))
+	for _, tr := range l.Tracks {
+		have[tr.ID] = true
+	}
+	var add []netease.Track
+	for _, tr := range songs {
+		if tr.ID == 0 || have[tr.ID] {
+			continue
+		}
+		have[tr.ID] = true
+		add = append(add, stored(tr))
+	}
+	if len(add) > 0 {
+		l.Tracks = append(add, l.Tracks...)
+	}
+	if len(add) > 0 || made {
+		a.changedLocal(l.ID)
+	}
+	return len(add), made
 }
 
 // stored returns tr as a playlist keeps it: its privilege is what NetEase
