@@ -95,7 +95,7 @@ func (l wallLayout) shows(i int, off ui.Point, w, h, top, foot float32) bool {
 
 // wallPane fills Now Playing with the wall, the song playing over it and
 // the controls along its foot.
-func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, pointerIn bool) {
+func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, chrome bool) {
 	// The song starts under the tabs, which are over its left.
 	top := topBar(c) + npTabsHeight
 	songH := min(max(h*0.36, 200), 320)
@@ -124,7 +124,7 @@ func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 		})
 	a.wallSong(c, tr, art, top, songH)
 	a.wallBar(c, accent)
-	reveal(npTabsRow(c, w), pointerIn).Children(func() { a.paneTabs(c) })
+	reveal(npTabsRow(c, w), chrome).Children(func() { a.paneTabs(c) })
 }
 
 // wallSong is the song playing, over the wall: its cover, which breathes

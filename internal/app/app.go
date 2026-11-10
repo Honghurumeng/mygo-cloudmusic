@@ -156,6 +156,8 @@ type app struct {
 	wallState             wallState     // the wall of the queue's covers, as it is dragged
 	quiet                 quietState    // the quiet parts of the song playing, for its hot comments
 	captions              captionState  // the episode playing's captions, and the model that writes them
+	npStill               npStillness   // when the pointer last moved in Now Playing
+	pointerHidden         bool          // the pointer is hidden, the chrome of Now Playing standing still
 	sig                   playerSig
 	quitting              bool
 

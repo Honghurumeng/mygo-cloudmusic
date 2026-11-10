@@ -18,6 +18,10 @@ var npSpring = ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millis
 // npSettle is how long Now Playing takes to come or go, its spring at rest.
 const npSettle = 600 * time.Millisecond
 
+// npIdle is how long the pointer may stay still in Now Playing before its
+// chrome goes, and the pointer with it, leaving the song alone on screen.
+const npIdle = 2 * time.Second
+
 // npState tracks Now Playing opening and closing, and reports whether it is
 // open and whether it has come to rest, open or closed. Call it once a
 // build, before the window's content.
@@ -56,9 +60,11 @@ func (a *app) nowPlayingLayer(c *ui.Context, open, settled bool) {
 	}
 	layer.AnimatePose(pose, npSpring)
 	if !open && settled || a.pl.Current() == nil {
-		// Closed: nothing to paint or click.
+		// Closed: nothing to paint or click, and the pointer back as it
+		// was, if its stillness had hidden it.
 		layer.Invisible()
 		a.queueAt, a.wallState.track = -1, 0
+		a.showPointer(true)
 		return
 	}
 	if !open {
@@ -90,17 +96,24 @@ func (a *app) nowPlayingView(c *ui.Context) {
 
 	root := ui.Box(c.Key("now-playing")).Absolute().Top(0).Left(0).Right(0).Bottom(0).
 		Background(ui.Hex("#0b0b0d")).TextColor(white)
-	// The pointer is over the view whenever it is in the window.
-	pointerIn := root.Hovered()
+	// The pointer is over the view whenever it is in the window, and where
+	// it stands tells when it last moved.
+	px, py, pointerIn := root.PointerPosition()
+	// A song's panes, the five of them, go quiet while the pointer stays
+	// still: the chrome fades, and the pointer itself goes with it. An
+	// episode's panes keep their chrome, as their captions are read.
+	still := pointerIn && tr.ProgramID == 0 && a.npStill.idle(c, px, py)
+	a.showPointer(!still)
+	chrome := pointerIn && !still
 	root.Children(func() {
 		a.backdrop(c, shown, tint)
 		// Over the backdrop, which is positioned too: positioned elements
 		// paint over those in the flow.
-		ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Children(func() { a.nowPlayingBody(c, tr, art, accent, w, h, pointerIn) })
+		ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Children(func() { a.nowPlayingBody(c, tr, art, accent, w, h, chrome) })
 	})
 }
 
-func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, pointerIn bool) {
+func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, chrome bool) {
 	pl := a.pl
 	a.commentsFor(tr)
 	// An episode has what it is about and its captions in place of lyrics;
@@ -126,9 +139,9 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 	}
 	{
 		// The top strip drags the window; the chevron closes the view,
-		// showing only while the pointer is in the window, as the pane tabs do.
+		// showing while the pointer moves in the window, as the pane tabs do.
 		ui.Row(c).Height(topBar(c)).Justify(ui.Center).AlignItems(ui.Center).DragWindow().Children(func() {
-			reveal(ui.Box(c.Key("close-reveal")), pointerIn).Children(func() {
+			reveal(ui.Box(c.Key("close-reveal")), chrome).Children(func() {
 				if iconButton(c.Key("close"), iconDown, 22, white.Alpha(0.7), "关闭").Clicked() {
 					a.nowPlaying = false
 				}
@@ -137,7 +150,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 		if a.npPane == paneStage {
 			// The stage takes the whole view: the lyrics are the show, the
 			// controls a slim bar at the foot.
-			reveal(npTabsRow(c, w), pointerIn).Children(func() {
+			reveal(npTabsRow(c, w), chrome).Children(func() {
 				a.paneTabs(c)
 				a.stageStyleButton(c)
 			})
@@ -147,7 +160,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 		}
 		if a.npPane == paneWall {
 			// The wall takes the whole view too, under the song playing.
-			a.wallPane(c, tr, art, accent, w, h, pointerIn)
+			a.wallPane(c, tr, art, accent, w, h, chrome)
 			return
 		}
 
@@ -160,7 +173,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 		// the controls.
 		side = max(coverSize, 280)
 		padX := npSideX(w)
-		reveal(npTabsRow(c, w), pointerIn).Children(func() { a.paneTabs(c) })
+		reveal(npTabsRow(c, w), chrome).Children(func() { a.paneTabs(c) })
 		ui.Row(c).Grow(1).Padding(0, padX, 44, padX).Gap(72).AlignItems(ui.Stretch).Children(func() {
 			var coverTop float32
 			ui.Column(c).Width(side).Justify(ui.Center).Gap(0).Children(func() {
@@ -254,14 +267,50 @@ func npTabsRow(c *ui.Context, w float32) ui.Element {
 	return ui.Row(c.Key("tabs")).Absolute().Top(topBar(c)).Left(npSideX(w)).Height(npTabsHeight).Gap(6).AlignItems(ui.Center)
 }
 
-// reveal fades e in while the pointer is in the window, and out when it
-// leaves.
+// reveal fades e in while the chrome shows, and out when the pointer leaves
+// the window or stays still in it.
 func reveal(e ui.Element, shown bool) ui.Element {
 	pose := ui.Pose{Fade: 1}
 	if shown {
 		pose = ui.Pose{}
 	}
 	return e.AnimatePose(pose, ui.Animation{Duration: 200 * time.Millisecond})
+}
+
+// npStillness tells when the pointer last moved in Now Playing: the chrome
+// goes while it stays still, and the pointer with it.
+type npStillness struct {
+	x, y    float32
+	seen    bool
+	movedAt time.Time
+}
+
+// idle returns whether the pointer has stayed still at x, y for npIdle, and
+// asks for a frame when it will have: the frame that came makes a build
+// that hides the chrome. A pointer elsewhere is a move, and a move sets the
+// frame anew, so that a still pointer is never left waiting on one that has
+// already gone by.
+func (s *npStillness) idle(c *ui.Context, x, y float32) bool {
+	now := c.Now()
+	if !s.seen || s.x != x || s.y != y {
+		s.x, s.y, s.seen = x, y, true
+		s.movedAt = now
+	}
+	if wait := npIdle - now.Sub(s.movedAt); wait > 0 {
+		c.After(wait)
+		return false
+	}
+	return true
+}
+
+// showPointer shows the pointer, or hides it with the chrome, only as it
+// changes: the window's own pointer is not the app's to set anew each frame.
+func (a *app) showPointer(show bool) {
+	if a.pointerHidden == !show {
+		return
+	}
+	a.pointerHidden = !show
+	hidePointer(!show)
 }
 
 // lyricsPaneChosen is the pane of lyrics the listener chose last: what
