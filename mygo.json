@@ -2,7 +2,7 @@
   "name": "MyGo 云音乐",
   "identifier": "com.github.honghurumeng.cloudmusic",
   "slug": "mygo-cloudmusic",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "out": "build",
   "macos": {
     "icon": "icon/AppIcon.icon",
@@ -10,7 +10,11 @@
   },
   "linux": {
     "comment": "第三方网易云音乐桌面客户端",
-    "categories": ["AudioVideo", "Audio", "Player"],
+    "categories": [
+      "AudioVideo",
+      "Audio",
+      "Player"
+    ],
     "webview": false
   }
 }
