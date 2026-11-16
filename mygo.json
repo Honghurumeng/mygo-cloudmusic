@@ -2,7 +2,7 @@
   "name": "MyGo 云音乐",
   "identifier": "com.github.honghurumeng.cloudmusic",
   "slug": "mygo-cloudmusic",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "out": "build",
   "macos": {
     "icon": "icon/AppIcon.icon",
