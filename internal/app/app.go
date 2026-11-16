@@ -174,8 +174,9 @@ type app struct {
 	// What the list drops as it next builds: a row builds while it shows,
 	// so dropping its song then would leave the list reading a shorter
 	// slice than it builds by.
-	cacheDropping int64 // the song to drop, or 0
-	cacheClearing bool  // every song is to drop
+	cacheDropping int64  // the song to drop, or 0
+	cacheClearing bool   // every song is to drop
+	cacheToast    string // what exporting a song has to say, shown by the settings
 	// chksz resolves the streams NetEase won't without a session: nil to
 	// play only as NetEase streams (newChKSz). It keeps what it resolved
 	// and how much of the API's quota is left, so it is made once.

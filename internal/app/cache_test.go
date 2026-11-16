@@ -1,16 +1,54 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"netease-music-mygo/internal/player"
 )
+
+// Clicking export writes the cached song where the save dialog says, with
+// what the song is tagged on it.
+func TestCacheExport(t *testing.T) {
+	a := newTestApp()
+	a.settings = defaultSettings()
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "1-exhigh.mp3"), []byte("audio"), 0o600)
+	os.WriteFile(filepath.Join(dir, "1-exhigh.json"),
+		[]byte(`{"size":5,"type":"mp3","level":"exhigh","name":"宝船","artists":"歌手","album":"专辑"}`), 0o600)
+	a.pl.Cache = player.NewCache(dir, 1<<30)
+	a.cacheSongs = a.pl.Cache.Songs()
+	a.cacheOpen, a.settingsTab = true, "缓存"
+
+	dst := filepath.Join(t.TempDir(), "out.mp3")
+	old := saveSongAs
+	saveSongAs = func(_ *mygo.Window, name, ext string) (string, error) {
+		return dst, nil
+	}
+	defer func() { saveSongAs = old }()
+
+	tt := ui.NewTester(a.settingsView, 760, 580)
+	tt.Frame()
+	if err := tt.Click("导出 宝船"); err != nil {
+		t.Fatal(err)
+	}
+	var b []byte
+	for start := time.Now(); time.Since(start) < 2*time.Second; time.Sleep(10 * time.Millisecond) {
+		if b, _ = os.ReadFile(dst); b != nil {
+			break
+		}
+	}
+	if !bytes.Contains(b, []byte("宝船")) || !bytes.Contains(b, []byte("audio")) {
+		t.Fatalf("exported %q", b)
+	}
+}
 
 // The settings list the songs the cache keeps, dropping one takes it out of
 // the list and its files out of the cache, and back returns to the settings.

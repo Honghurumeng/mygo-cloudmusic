@@ -237,6 +237,19 @@ func (c *Cache) Songs() []CachedSong {
 	return out
 }
 
+// SongFile returns where the cache keeps s, or "" if it keeps it no
+// longer.
+func (c *Cache) SongFile(s CachedSong) string {
+	if c == nil || !keepable(s.Level, s.Type) {
+		return ""
+	}
+	path := filepath.Join(c.dir, cacheKey(s.ID, s.Level)+"."+s.Type)
+	if info, err := os.Stat(path); err != nil || info.Size() != s.Size {
+		return ""
+	}
+	return path
+}
+
 // Remove drops the song of id kept at level, and what is kept of it.
 func (c *Cache) Remove(id int64, level string) {
 	if c == nil {

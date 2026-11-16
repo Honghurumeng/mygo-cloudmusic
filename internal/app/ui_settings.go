@@ -99,6 +99,7 @@ func (a *app) settingsView(c *ui.Context) {
 	c.OnShortcut(ui.Cmd, ui.KeyW, func() { a.settingsWin.Close() })
 	if a.cacheOpen {
 		a.cacheSongsView(c, p)
+		a.settingsToast(c)
 		return
 	}
 	s := &a.settings
@@ -153,6 +154,15 @@ func (a *app) settingsView(c *ui.Context) {
 			}
 		})
 	})
+	a.settingsToast(c)
+}
+
+// settingsToast says what exporting a song had to say, once.
+func (a *app) settingsToast(c *ui.Context) {
+	if a.cacheToast != "" {
+		c.Toast(a.cacheToast)
+		a.cacheToast = ""
+	}
 }
 
 // settingsRail lists the categories down the window's left, picking out
@@ -557,6 +567,9 @@ func (a *app) cachedSongRow(c *ui.Context, i int, p palette, settled bool) {
 			ui.Text(c, cachedLevel(s.Level)+" · "+cachedSize(s.Size)).FontSize(11.5).TextColor(p.muted).SingleLine()
 			ui.Text(c, cachedAt(s.Kept)).FontSize(11.5).TextColor(p.faint).SingleLine()
 		})
+		if iconButton(c.Key("export"), iconDownload, 15, p.muted, "导出 "+name).Clicked() {
+			a.exportCached(*s)
+		}
 		if iconButton(c.Key("remove"), iconTrash, 15, p.muted, "删除 "+name).Clicked() {
 			a.cacheDropping = s.ID
 		}
