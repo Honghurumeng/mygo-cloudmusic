@@ -7,3 +7,4 @@ build-cross
 api.chksz.key
 
 .DS_Store
+.workbuddy
