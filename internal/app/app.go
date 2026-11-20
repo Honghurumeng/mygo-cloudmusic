@@ -231,6 +231,11 @@ func (a *app) showMain() {
 
 // Run runs the app until it quits.
 func Run() error {
+	// A second launch hands its command line to the running app and exits,
+	// instead of starting another player and tray icon over the same data.
+	if !mygo.App.RequestSingleInstanceLock() {
+		return nil
+	}
 	a := &app{
 		playlists:  map[int64]*netease.Playlist{},
 		loadingPl:  map[int64]bool{},
@@ -246,6 +251,7 @@ func Run() error {
 		queueAt:    -1,
 		cacheUsed:  -1,
 	}
+	mygo.App.OnSecondInstance(func([]string, string) { a.showMain() })
 	moveOldData()
 	mygo.App.WhenReady(func() {
 		a.settings = loadSettings()
